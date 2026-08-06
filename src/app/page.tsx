@@ -78,7 +78,7 @@ export default function Home() {
         <SearchBar onSelect={handleSelect} />
       </header>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700">
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-full bg-green-600" /> Free now ({counts.free})
@@ -92,7 +92,7 @@ export default function Home() {
         <button
           type="button"
           onClick={() => lastBbox && loadSpots(lastBbox)}
-          className="rounded border border-gray-300 bg-white px-3 py-1 text-xs font-medium hover:bg-gray-100"
+          className="rounded border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
         >
           Refresh
         </button>

@@ -52,7 +52,7 @@ export default function SearchBar({ onSelect }: SearchBarProps) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search an NYC address or neighborhood…"
-          className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none"
         />
         <button
           type="submit"
@@ -70,7 +70,7 @@ export default function SearchBar({ onSelect }: SearchBarProps) {
               <button
                 type="button"
                 onClick={() => pick(r)}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-gray-100"
+                className="block w-full px-3 py-2 text-left text-sm text-gray-900 hover:bg-gray-100"
               >
                 {r.display_name}
               </button>
