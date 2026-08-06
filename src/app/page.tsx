@@ -105,7 +105,7 @@ export default function Home() {
             <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd: open
           </span>
           <span className="flex items-center gap-1.5 text-gray-500">
-            <span className="inline-block h-3 w-3 rounded-full border-2 border-purple-600" /> Crowd: taken
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-orange-600" /> Crowd: taken
           </span>
           {loading && <span className="text-gray-400">Loading…</span>}
           {error && <span className="text-red-600">{error}</span>}

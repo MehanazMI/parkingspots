@@ -63,7 +63,9 @@ crowdsourced reporting on top of the meter status:
   each `ParkingSpot.occupancy` is either `null` or a live (unexpired, by
   construction — TTL handles expiry) report.
 - UI: `ParkingMap.tsx` draws a colored ring around a marker when it has an
-  occupancy report (blue = reported open, purple = reported taken) and adds
+  occupancy report (blue = reported open, orange = reported taken — swapped
+  from an earlier blue/purple pairing the user found too similar to tell
+  apart) and adds
   an "It's open" / "It's taken" control to the popup for metered spots only,
   per the user's ask ("at least for the metered ones"). Submitting posts to
   `/api/report` and optimistically updates that one spot's `occupancy` in

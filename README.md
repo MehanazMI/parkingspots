@@ -34,7 +34,7 @@ Since there's no free live-occupancy feed, metered spots also support
 **crowdsourced availability reports**: anyone can mark a spot "It's open" or
 "It's taken" from its map popup. Reports are anonymous, stored in Redis with
 a 30-minute TTL (so they auto-expire rather than go stale), and shown as a
-colored ring around the marker — 🔵 blue for "reported open", 🟣 purple for
+colored ring around the marker — 🔵 blue for "reported open", 🟠 orange for
 "reported taken". This is opt-in infrastructure: it only activates when
 `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are configured (see
 below); without them, `/api/report` returns 503 and spots just show meter

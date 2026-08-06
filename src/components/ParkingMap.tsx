@@ -25,7 +25,7 @@ function statusColor(status: ParkingSpot["status"]["value"]): string {
 }
 
 function occupancyRingColor(status: OccupancyStatus): string {
-  return status === "open" ? "#2563eb" : "#7c3aed";
+  return status === "open" ? "#2563eb" : "#ea580c";
 }
 
 function spotIcon(spot: ParkingSpot) {
@@ -132,7 +132,7 @@ function OccupancySection({ spot, onReport }: OccupancySectionProps) {
           type="button"
           disabled={submitting !== null}
           onClick={() => handle("taken")}
-          className="rounded border border-purple-300 bg-purple-50 px-2 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+          className="rounded border border-orange-300 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50"
         >
           {submitting === "taken" ? "Sending…" : "It's taken"}
         </button>
