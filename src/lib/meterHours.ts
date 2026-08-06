@@ -127,6 +127,7 @@ export function getMeterStatus(meterHoursText: string, at: Date = new Date()): M
     return {
       value: "unknown",
       detail: `Could not parse meter hours ("${meterHoursText}") — check the posted sign.`,
+      limitMinutes: null,
     };
   }
 
@@ -147,12 +148,14 @@ export function getMeterStatus(meterHoursText: string, at: Date = new Date()): M
       detail: `Metered now — up to ${active.limitHours ?? "?"}HR${
         active.vehicleClass ? ` (${active.vehicleClass})` : ""
       }, ${dayLabel} ${formatClock(active.startMin)}–${formatClock(active.endMin)}.`,
+      limitMinutes: active.limitHours !== null ? active.limitHours * 60 : null,
     };
   }
 
   return {
     value: "free",
     detail: "No metered restriction in effect right now, based on posted meter hours.",
+    limitMinutes: null,
   };
 }
 

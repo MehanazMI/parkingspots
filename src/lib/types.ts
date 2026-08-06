@@ -3,6 +3,8 @@ export type MeterStatusValue = "free" | "metered" | "unknown";
 export interface MeterStatus {
   value: MeterStatusValue;
   detail: string;
+  /** Minutes a vehicle may stay under the currently active rule; only set when value is "metered". */
+  limitMinutes: number | null;
 }
 
 export type OccupancyStatus = "open" | "taken";

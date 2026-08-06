@@ -21,6 +21,8 @@ new greenfield project with its own git repo.
 | Meter/geocoding data: **no database** | Both are queried live and cached briefly (60s) at the API-route level — re-derived from a live feed, not stored state. |
 | Occupancy reports: **Upstash Redis**, self-serve free tier (not Vercel Marketplace billing) | The user asked for an availability sub-status on metered spots. No free live-occupancy feed exists (see above), so the only honest way to offer one is crowdsourced reports — which need somewhere to write TTL'd key-value data. First attempt was `vercel integration add upstash/upstash-kv` through the Marketplace; that requires accepting billing terms and a payment method on file, which the user declined ("I do not want to share my card details"). Switched to creating the Redis database directly at console.upstash.com (free tier, no card) and pasting the REST URL/token into `.env.local` by hand instead. |
 | Repo visibility: **private** | User's explicit choice when asked. |
+| AI assistant model: **OpenAI direct** (`@ai-sdk/openai`), not Vercel AI Gateway | Vercel platform guidance defaults to the AI Gateway for AI SDK usage. Presented that as the recommended option, but flagged it needs an API key from the Vercel dashboard which may involve billing setup — given the earlier Redis/Marketplace billing friction, the user chose to bring their own OpenAI key directly instead, bypassing Vercel's Gateway/billing entirely. This is the explicit "user asked for direct provider wiring" exception to the gateway-by-default guidance. |
+| AI model: **`gpt-5.4-mini`** | Fetched the live model catalog (`ai-gateway.vercel.sh/v1/models`) rather than trusting training data, which was outdated (would have suggested `gpt-4.1-mini`). Picked the mini tier of the newest version for a cheap/fast tool-calling assistant; `gpt-5.4-nano` is available if even cheaper is wanted. |
 
 ## What "status" actually means
 
@@ -76,6 +78,64 @@ can't linger indefinitely with no upkeep — a report simply stops existing
 30 minutes after it's made, and the marker reverts to showing meter status
 only.
 
+## AI parking assistant
+
+Requested as a follow-up feature: a chat panel for natural-language questions
+("free parking near Union Square", "a 2-hour spot near Times Square"). Built
+with a plan-first pass (scope + provider/billing tradeoffs surfaced and
+confirmed before writing code), per explicit user preference established
+earlier in the session after a plan step got skipped once.
+
+Design principle: the model has **no independent access to parking data** —
+it can only answer via a tool that calls the app's own existing server-side
+functions. This was a deliberate constraint (stated in the agent's
+instructions and enforced structurally, not just by prompting) so an answer
+like "Irving Place, 212m away" is always literally the tool's output, not a
+generation. Verified this directly: called `/api/chat` with curl and
+confirmed the model's final text matched the tool's returned street name and
+distance exactly.
+
+- `src/lib/geocode.ts` — extracted the Nominatim call out of
+  `/api/geocode/route.ts` into a shared function, so the chat tool and the
+  manual search bar geocode through identical logic (no second, possibly
+  divergent implementation).
+- `src/lib/types.ts` — added `MeterStatus.limitMinutes` (minutes a vehicle
+  may stay under the currently active rule, null unless metered), computed
+  in `meterHours.ts`'s existing active-rule branch. Needed so the duration
+  filter ("a 2-hour spot") could compare against real parsed data instead of
+  re-parsing or regex-scraping the display text a second time.
+- `src/lib/tools/find-parking-tool.ts` — a `tool()` taking
+  `{ area, durationMinutes? }`: geocodes, builds a ~500m box around the
+  point, calls `fetchParkingSpots` + `attachOccupancy` directly (same
+  process, no HTTP round-trip), filters by duration when given, ranks
+  (crowd-reported-open first, then free, then metered, by distance), returns
+  top 8.
+- `src/lib/agents/parking-agent.ts` — a `ToolLoopAgent` (`gpt-5.4-mini` via
+  `@ai-sdk/openai`) with instructions constraining it to only state tool
+  output, to flag that free/metered ≠ physical occupancy, to label crowd
+  reports as unverified, and to omit `durationMinutes` unless the user
+  actually stated one (an early test showed the model defaulting to `1`
+  when no duration was mentioned — harmless since almost any real limit
+  clears 1 minute, but tightened the instructions anyway rather than leave
+  an unintended default in place).
+- `src/app/api/chat/route.ts` — `createAgentUIStreamResponse`, the
+  agent-native route handler (simpler than manually wiring `streamText` +
+  `convertToModelMessages` since the agent already encapsulates model/tools).
+- `src/components/ChatPanel.tsx` — slide-over panel using `useChat` +
+  `DefaultChatTransport`; renders `tool-findParking` parts as spot cards
+  (street, status badge, distance, crowd report if any); clicking a card
+  calls back into `page.tsx`'s existing `flyTo` state, so chat results and
+  manual search share the same map-navigation path.
+- Floating "Ask AI" button in the bottom-right of the map opens/closes the
+  panel.
+
+All current AI SDK API names (`ToolLoopAgent`, `tool()`, `inputSchema`,
+`InferAgentUIMessage`, `createAgentUIStreamResponse`, `useChat`,
+`DefaultChatTransport`) were confirmed against the bundled
+`node_modules/ai/docs/` at build time rather than trusted from training data,
+per the ai-sdk skill's explicit warning that AI SDK knowledge in training
+data is outdated.
+
 ## Architecture
 
 ```
@@ -95,9 +155,12 @@ src/
                                 fly-to-location and move-end handlers
     SearchBar.tsx               Address input -> /api/geocode -> results
                                 dropdown -> selecting flies the map there
+    ChatPanel.tsx                Slide-over AI chat: useChat, renders
+                                 tool-findParking results as spot cards
     api/
       report/route.ts           POST { spotId, status } -> writes a 30-min
                                  TTL occupancy report to Redis
+      chat/route.ts               POST -> createAgentUIStreamResponse(parkingAgent)
   lib/
     types.ts                   Shared types: ParkingSpot, MeterStatus,
                                 OccupancyReport, BoundingBox
@@ -105,6 +168,14 @@ src/
     nycOpenData.ts               Fetches + normalizes NYC Open Data records
     redis.ts                     Lazy Upstash Redis client (null if unconfigured)
     occupancy.ts                  Report key/TTL, parsing, attachOccupancy()
+    geocode.ts                     Shared Nominatim geocode() — used by
+                                   /api/geocode and the AI tool
+    tools/
+      find-parking-tool.ts          AI tool: geocode + fetchParkingSpots +
+                                    attachOccupancy + duration filter + rank
+    agents/
+      parking-agent.ts               ToolLoopAgent (gpt-5.4-mini), grounding
+                                     instructions, InferAgentUIMessage export
 ```
 
 ### Request flow
@@ -136,6 +207,18 @@ src/
   the map there but didn't refetch data until a manual "Search this area"
   click. Changed the move-end handler to auto-refetch (debounced), kept a
   manual "Refresh" button as a fallback.
+- AI assistant: verified grounding directly via curl against `/api/chat`
+  before touching the UI — confirmed the streamed tool call's `input`
+  matched the user's ask and the final text matched the tool's `output`
+  verbatim (street name, distance). Then a full Playwright pass through the
+  actual UI: opened the panel, asked "find a 2 hour metered spot near Times
+  Square", confirmed real spot cards rendered with distances, clicked one
+  and confirmed the map flew there and refetched that area's data, zero
+  console errors throughout.
+- Production deploy verified live: homepage, `/api/parking`, and `/api/report`
+  all smoke-tested against the deployed URL after `vercel --prod`, confirming
+  the Upstash env vars pushed via `vercel env add` actually reached
+  production (not just local `.env.local`).
 
 ## Known limitations / natural next steps
 
@@ -149,13 +232,17 @@ src/
   pattern (chained with `/` and `,`) but not every historical variant in
   the dataset — those fall back to "Unknown" rather than a wrong guess.
 - No automated tests were added (none requested); verification was manual
-  build/lint/type-check plus one browser-driven smoke pass.
-- Not yet deployed — `vercel` (or the Vercel MCP `deploy_to_vercel` tool)
-  is the next step whenever that's wanted.
+  build/lint/type-check plus browser-driven smoke passes.
 - Occupancy reports are anonymous and unmoderated, with no rate-limiting
   beyond the 30-minute TTL — fine for a demo, would need abuse controls
   before being trusted for real decisions.
+- The AI assistant has no conversation memory of prior searches beyond
+  what `useChat` keeps client-side for the current session, no rate
+  limiting on `/api/chat`, and each `findParking` call costs real OpenAI
+  tokens — fine for a demo, would need usage limits before wide exposure.
+- No observability/error-tracking drains configured on the Vercel project.
 
-## Repository
+## Repository & deployment
 
-Private GitHub repo: https://github.com/MehanazMI/parkingspots
+- Private GitHub repo: https://github.com/MehanazMI/parkingspots
+- Live production: https://parkingspots-one.vercel.app

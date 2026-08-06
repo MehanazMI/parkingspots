@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useRef, useState } from "react";
+import ChatPanel from "@/components/ChatPanel";
 import SearchBar from "@/components/SearchBar";
 import type { BoundingBox, OccupancyStatus, ParkingSpot } from "@/lib/types";
 
@@ -18,6 +19,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number } | null>(null);
   const [lastBbox, setLastBbox] = useState<BoundingBox | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadSpots = useCallback(async (bbox: BoundingBox) => {
@@ -60,6 +62,10 @@ export default function Home() {
 
   const handleSelect = useCallback((result: { lat: number; lng: number; label: string }) => {
     setFlyTo({ lat: result.lat, lng: result.lng, zoom: 17 });
+  }, []);
+
+  const handleSelectSpotFromChat = useCallback((spot: { lat: number; lng: number }) => {
+    setFlyTo({ lat: spot.lat, lng: spot.lng, zoom: 18 });
   }, []);
 
   const handleReport = useCallback(async (spotId: string, status: OccupancyStatus) => {
@@ -129,6 +135,18 @@ export default function Home() {
           onReady={handleReady}
           onReport={handleReport}
         />
+
+        {!chatOpen && (
+          <button
+            type="button"
+            onClick={() => setChatOpen(true)}
+            className="absolute bottom-4 right-4 z-[1000] rounded-full bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-lg hover:bg-blue-700"
+          >
+            Ask AI
+          </button>
+        )}
+
+        <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} onSelectSpot={handleSelectSpotFromChat} />
       </div>
     </div>
   );
