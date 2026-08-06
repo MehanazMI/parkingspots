@@ -55,6 +55,7 @@ export async function fetchParkingSpots(bbox: BoundingBox): Promise<ParkingSpot[
         facility: r.facility ?? "",
         meterHours,
         status: getMeterStatus(meterHours, now),
+        occupancy: null,
       } satisfies ParkingSpot;
     });
 }

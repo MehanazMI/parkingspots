@@ -5,6 +5,13 @@ export interface MeterStatus {
   detail: string;
 }
 
+export type OccupancyStatus = "open" | "taken";
+
+export interface OccupancyReport {
+  status: OccupancyStatus;
+  reportedAt: number;
+}
+
 export interface ParkingSpot {
   id: string;
   lat: number;
@@ -17,6 +24,7 @@ export interface ParkingSpot {
   facility: string;
   meterHours: string;
   status: MeterStatus;
+  occupancy: OccupancyReport | null;
 }
 
 export interface BoundingBox {

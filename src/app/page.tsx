@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useRef, useState } from "react";
 import SearchBar from "@/components/SearchBar";
-import type { BoundingBox, ParkingSpot } from "@/lib/types";
+import type { BoundingBox, OccupancyStatus, ParkingSpot } from "@/lib/types";
 
 const ParkingMap = dynamic(() => import("@/components/ParkingMap"), {
   ssr: false,
@@ -62,6 +62,21 @@ export default function Home() {
     setFlyTo({ lat: result.lat, lng: result.lng, zoom: 17 });
   }, []);
 
+  const handleReport = useCallback(async (spotId: string, status: OccupancyStatus) => {
+    const res = await fetch("/api/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ spotId, status }),
+    });
+    if (!res.ok) throw new Error("Report failed");
+    const data = await res.json();
+    setSpots((prev) =>
+      prev.map((s) =>
+        s.id === spotId ? { ...s, occupancy: { status: data.status, reportedAt: data.reportedAt } } : s
+      )
+    );
+  }, []);
+
   const counts = useMemo(() => {
     const free = spots.filter((s) => s.status.value === "free").length;
     const metered = spots.filter((s) => s.status.value === "metered").length;
@@ -86,6 +101,12 @@ export default function Home() {
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-3 w-3 rounded-full bg-red-600" /> Metered now ({counts.metered})
           </span>
+          <span className="flex items-center gap-1.5 text-gray-500">
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd: open
+          </span>
+          <span className="flex items-center gap-1.5 text-gray-500">
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-purple-600" /> Crowd: taken
+          </span>
           {loading && <span className="text-gray-400">Loading…</span>}
           {error && <span className="text-red-600">{error}</span>}
         </div>
@@ -106,6 +127,7 @@ export default function Home() {
           flyTo={flyTo}
           onMoveEnd={handleMoveEnd}
           onReady={handleReady}
+          onReport={handleReport}
         />
       </div>
     </div>

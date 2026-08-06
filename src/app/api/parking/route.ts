@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchParkingSpots } from "@/lib/nycOpenData";
+import { attachOccupancy } from "@/lib/occupancy";
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -17,7 +18,8 @@ export async function GET(req: NextRequest) {
 
   try {
     const spots = await fetchParkingSpots({ north, south, east, west });
-    return NextResponse.json({ spots });
+    const withOccupancy = await attachOccupancy(spots);
+    return NextResponse.json({ spots: withOccupancy });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Failed to fetch parking data" }, { status: 502 });

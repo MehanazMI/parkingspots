@@ -28,6 +28,18 @@ alternate-side parking, no-standing zones, construction closures, or other
 DOT regulations beyond meter hours — those live in a much larger, harder to
 parse dataset and are a natural next step.
 
+### Crowdsourced occupancy (optional)
+
+Since there's no free live-occupancy feed, metered spots also support
+**crowdsourced availability reports**: anyone can mark a spot "It's open" or
+"It's taken" from its map popup. Reports are anonymous, stored in Redis with
+a 30-minute TTL (so they auto-expire rather than go stale), and shown as a
+colored ring around the marker — 🔵 blue for "reported open", 🟣 purple for
+"reported taken". This is opt-in infrastructure: it only activates when
+`UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are configured (see
+below); without them, `/api/report` returns 503 and spots just show meter
+status as usual.
+
 ## Stack
 
 - **Next.js 16** (App Router, TypeScript, Turbopack)
@@ -36,10 +48,14 @@ parse dataset and are a natural next step.
 - **NYC Open Data** (Socrata) for parking meter locations + regulation text
 - **Nominatim (OpenStreetMap)** for address geocoding, proxied through a
   server route
+- **Upstash Redis** (optional) for crowdsourced occupancy reports, TTL'd
+  key-value only — no relational data, so no ORM/schema needed
 - Deploys to **Vercel**
 
-No database — both data sources are queried live through Next.js API routes
-(`/api/parking`, `/api/geocode`) that act as thin, cached proxies.
+The meter and geocoding data are queried live through Next.js API routes
+(`/api/parking`, `/api/geocode`) that act as thin, cached proxies. Occupancy
+reports go through `/api/report`, which writes to Redis with a 30-minute
+expiry.
 
 ## Running locally
 
@@ -63,6 +79,24 @@ set it as an env var:
 NYC_OPEN_DATA_APP_TOKEN=your_token_here
 ```
 
+### Optional: crowdsourced occupancy reports (Upstash Redis)
+
+To enable the "It's open" / "It's taken" reporting feature:
+
+1. Sign up at https://console.upstash.com (free tier, no card required) and
+   create a Redis database.
+2. On the database's page, copy the REST API **URL** and **token**.
+3. Add them to `.env.local`:
+
+```bash
+# .env.local
+UPSTASH_REDIS_REST_URL=your_url_here
+UPSTASH_REDIS_REST_TOKEN=your_token_here
+```
+
+Without these, the app still works — metered/free status just won't have a
+crowdsourced availability layer on top.
+
 ## Deploying to Vercel
 
 ```bash
@@ -70,7 +104,8 @@ vercel
 ```
 
 No environment variables are required for a basic deploy; add
-`NYC_OPEN_DATA_APP_TOKEN` in the Vercel project settings if you have one.
+`NYC_OPEN_DATA_APP_TOKEN` and/or the two `UPSTASH_REDIS_REST_*` vars in the
+Vercel project settings (or `vercel env add`) if you're using them.
 
 ## Known limitations / next steps
 
@@ -83,3 +118,7 @@ No environment variables are required for a basic deploy; add
   included yet.
 - Results are capped at 400 spots per viewport to keep the map responsive —
   zoom in on dense areas (Midtown, Downtown) to see everything.
+- Crowdsourced reports are anonymous and unmoderated — anyone can mark any
+  spot open/taken, and nothing currently limits repeat/spam reports beyond
+  the 30-minute TTL. Fine for a demo; would need rate-limiting and/or a
+  trust signal before relying on it for real decisions.
