@@ -8,7 +8,7 @@ import type { ParkingAgentUIMessage } from "@/lib/agents/parking-agent";
 interface ChatPanelProps {
   open: boolean;
   onClose: () => void;
-  onSelectSpot: (spot: { lat: number; lng: number }) => void;
+  onSelectSpot: (spot: { id: string; lat: number; lng: number }) => void;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -169,7 +169,7 @@ function ToolResultBridge({
   onSelectSpot,
 }: {
   output: FindParkingOutput;
-  onSelectSpot: (spot: { lat: number; lng: number }) => void;
+  onSelectSpot: (spot: { id: string; lat: number; lng: number }) => void;
 }) {
   if (output.error) {
     return <p className="text-xs text-red-600">{output.error}</p>;
@@ -180,7 +180,11 @@ function ToolResultBridge({
   return (
     <div className="mt-1 space-y-1.5">
       {output.spots.map((spot) => (
-        <SpotResultCard key={spot.id} spot={spot} onSelect={() => onSelectSpot({ lat: spot.lat, lng: spot.lng })} />
+        <SpotResultCard
+          key={spot.id}
+          spot={spot}
+          onSelect={() => onSelectSpot({ id: spot.id, lat: spot.lat, lng: spot.lng })}
+        />
       ))}
     </div>
   );

@@ -28,18 +28,34 @@ function occupancyRingColor(status: OccupancyStatus): string {
   return status === "open" ? "#2563eb" : "#ea580c";
 }
 
-function spotIcon(spot: ParkingSpot) {
+// Leaflet's Marker replaces its DOM icon (and closes any open popup) whenever
+// it receives a new Icon *object*, even if it looks identical to the last
+// one. Cache by visual signature so unrelated spots refetches — which
+// otherwise rebuild every icon from scratch — reuse the same instance for
+// markers whose appearance hasn't actually changed.
+const iconCache = new Map<string, L.DivIcon>();
+
+function spotIcon(spot: ParkingSpot, isHighlighted: boolean) {
+  const occupancyKey = spot.occupancy?.status ?? "none";
+  const cacheKey = `${spot.status.value}|${occupancyKey}|${isHighlighted}`;
+  const cached = iconCache.get(cacheKey);
+  if (cached) return cached;
+
   const color = statusColor(spot.status.value);
   const ring = spot.occupancy ? occupancyRingColor(spot.occupancy.status) : null;
   const shadow = ring
     ? `box-shadow:0 0 0 3px ${ring}, 0 0 2px rgba(0,0,0,0.5);`
     : `box-shadow:0 0 2px rgba(0,0,0,0.5);`;
-  return L.divIcon({
-    className: "",
-    html: `<span style="display:block;width:14px;height:14px;border-radius:50%;background:${color};border:2px solid white;${shadow}"></span>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
+  const size = isHighlighted ? 22 : 14;
+  const border = isHighlighted ? 3 : 2;
+  const icon = L.divIcon({
+    className: isHighlighted ? "spot-marker-highlight" : "",
+    html: `<span style="display:block;width:${size}px;height:${size}px;border-radius:50%;background:${color};border:${border}px solid white;${shadow}"></span>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
   });
+  iconCache.set(cacheKey, icon);
+  return icon;
 }
 
 function timeAgo(reportedAt: number): string {
@@ -53,6 +69,7 @@ interface FlyToTarget {
   lat: number;
   lng: number;
   zoom?: number;
+  spotId?: string;
 }
 
 function FlyToController({ target }: { target: FlyToTarget | null }) {
@@ -147,13 +164,37 @@ interface ParkingMapProps {
   center: [number, number];
   zoom: number;
   flyTo: FlyToTarget | null;
+  highlightedSpotId: string | null;
   onMoveEnd: (bbox: BoundingBox) => void;
   onReady: (bbox: BoundingBox) => void;
   onReport: (spotId: string, status: OccupancyStatus) => Promise<void>;
 }
 
-export default function ParkingMap({ spots, center, zoom, flyTo, onMoveEnd, onReady, onReport }: ParkingMapProps) {
+export default function ParkingMap({
+  spots,
+  center,
+  zoom,
+  flyTo,
+  highlightedSpotId,
+  onMoveEnd,
+  onReady,
+  onReport,
+}: ParkingMapProps) {
   const readyFired = useRef(false);
+  const markerRefs = useRef<Record<string, L.Marker>>({});
+  const openedForRef = useRef<string | null>(null);
+
+  // Open the highlighted spot's popup as soon as its marker actually exists —
+  // decoupled from the fly-to animation, since a chat-selected spot's data
+  // may still be loading (new bbox fetch) when the animation finishes.
+  useEffect(() => {
+    if (!highlightedSpotId || openedForRef.current === highlightedSpotId) return;
+    const marker = markerRefs.current[highlightedSpotId];
+    if (marker) {
+      marker.openPopup();
+      openedForRef.current = highlightedSpotId;
+    }
+  }, [highlightedSpotId, spots]);
 
   return (
     <MapContainer
@@ -180,7 +221,15 @@ export default function ParkingMap({ spots, center, zoom, flyTo, onMoveEnd, onRe
       <FlyToController target={flyTo} />
       <MoveEndController onMoveEnd={onMoveEnd} />
       {spots.map((spot) => (
-        <Marker key={spot.id} position={[spot.lat, spot.lng]} icon={spotIcon(spot) ?? DEFAULT_ICON}>
+        <Marker
+          key={spot.id}
+          position={[spot.lat, spot.lng]}
+          icon={spotIcon(spot, spot.id === highlightedSpotId) ?? DEFAULT_ICON}
+          ref={(m) => {
+            if (m) markerRefs.current[spot.id] = m;
+            else delete markerRefs.current[spot.id];
+          }}
+        >
           <Popup>
             <div className="text-sm">
               <p className="font-semibold">

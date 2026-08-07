@@ -17,9 +17,10 @@ export default function Home() {
   const [spots, setSpots] = useState<ParkingSpot[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number } | null>(null);
+  const [flyTo, setFlyTo] = useState<{ lat: number; lng: number; zoom?: number; spotId?: string } | null>(null);
   const [lastBbox, setLastBbox] = useState<BoundingBox | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadSpots = useCallback(async (bbox: BoundingBox) => {
@@ -61,11 +62,13 @@ export default function Home() {
   );
 
   const handleSelect = useCallback((result: { lat: number; lng: number; label: string }) => {
+    setHighlightedSpotId(null);
     setFlyTo({ lat: result.lat, lng: result.lng, zoom: 17 });
   }, []);
 
-  const handleSelectSpotFromChat = useCallback((spot: { lat: number; lng: number }) => {
-    setFlyTo({ lat: spot.lat, lng: spot.lng, zoom: 18 });
+  const handleSelectSpotFromChat = useCallback((spot: { id: string; lat: number; lng: number }) => {
+    setHighlightedSpotId(spot.id);
+    setFlyTo({ lat: spot.lat, lng: spot.lng, zoom: 18, spotId: spot.id });
   }, []);
 
   const handleReport = useCallback(async (spotId: string, status: OccupancyStatus) => {
@@ -131,6 +134,7 @@ export default function Home() {
           center={UNION_SQUARE}
           zoom={16}
           flyTo={flyTo}
+          highlightedSpotId={highlightedSpotId}
           onMoveEnd={handleMoveEnd}
           onReady={handleReady}
           onReport={handleReport}

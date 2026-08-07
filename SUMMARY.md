@@ -136,6 +136,41 @@ All current AI SDK API names (`ToolLoopAgent`, `tool()`, `inputSchema`,
 per the ai-sdk skill's explicit warning that AI SDK knowledge in training
 data is outdated.
 
+### Highlighting chat results on the map
+
+Follow-up request: clicking a chat result flew the map there but gave no
+visual cue about *which* marker it was. Added:
+
+- `spotIcon()` in `ParkingMap.tsx` renders a bigger (22px vs 14px) marker
+  with a pulsing blue halo (`.spot-marker-highlight`, keyframes in
+  `globals.css`) when `spot.id === highlightedSpotId`.
+- Clicking a chat result now sets both `flyTo` (with a `spotId`) and
+  `highlightedSpotId` in `page.tsx`, passed down to `ParkingMap`.
+- The spot's popup auto-opens once its marker actually exists — deliberately
+  *not* tied to the fly-to animation's `moveend`, since a chat-selected spot
+  is often outside the current viewport and its data may still be loading
+  (a new bbox fetch) when the animation finishes. Instead, an effect watches
+  `[highlightedSpotId, spots]` and opens the popup the moment the marker for
+  that ID is available, however long that takes.
+
+**Debugging note, in case this resurfaces:** the popup-auto-open initially
+appeared broken — `marker.openPopup()` reported `isPopupOpen() === true`
+immediately, but the popup vanished from the DOM within ~250ms in `npm run
+dev`. Root-caused via a `popupclose` listener + stack trace to
+`doubleInvokeEffectsOnFiber` — React's **development-only** Strict Mode
+behavior of mount → simulated-unmount → remount for every effect on a
+component's first render. Since react-leaflet's `Marker` adds/removes the
+actual Leaflet layer inside an effect, this genuinely removed-then-re-added
+the marker (closing its popup) the moment it first mounted — nothing to do
+with our code being wrong. Verified clean against `next build && next
+start` (production, no double-invoke): popup opens and stays open. Also
+fixed a real, non-dev-only bug found along the way: `spotIcon()` built a
+brand-new `L.divIcon()` object on every call, so *any* unrelated spots
+refetch made Leaflet call `setIcon()` on every marker (new object ref),
+which is wasteful and — combined with the dev double-invoke — made the
+symptom worse. Now caches icons by visual signature (status + occupancy +
+highlighted) so unchanged markers reuse the same instance.
+
 ## Architecture
 
 ```
