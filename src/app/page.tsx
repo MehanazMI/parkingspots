@@ -78,8 +78,8 @@ export default function Home() {
       body: JSON.stringify({ spotId }),
     });
     if (!res.ok) throw new Error("Report failed");
-    const data = await res.json();
-    setSpots((prev) => prev.map((s) => (s.id === spotId ? { ...s, occupancy: { reportedAt: data.reportedAt } } : s)));
+    const occupancy = await res.json();
+    setSpots((prev) => prev.map((s) => (s.id === spotId ? { ...s, occupancy } : s)));
   }, []);
 
   const counts = useMemo(() => {
@@ -93,7 +93,7 @@ export default function Home() {
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 bg-white px-4 py-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900">NYC Parking Finder</h1>
-          <p className="text-xs text-gray-500">Metered on-street parking, live-computed status</p>
+          <p className="text-xs text-gray-500">Legal parking status by block, computed live — not a live occupancy feed</p>
         </div>
         <SearchBar onSelect={handleSelect} />
       </header>
@@ -108,6 +108,12 @@ export default function Home() {
           </span>
           <span className="flex items-center gap-1.5 text-gray-500">
             <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd-reported opening
+          </span>
+          <span
+            className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500"
+            title="Each marker covers a block-face segment (curb between two cross streets), which often includes multiple parking spaces — not a single space. 'Free'/'Metered' reflects the posted legal status, computed live. A crowd report means someone recently saw an opening somewhere on that block, not that the whole block (or any specific space) is open."
+          >
+            i
           </span>
           {loading && <span className="text-gray-400">Loading…</span>}
           {error && <span className="text-red-600">{error}</span>}

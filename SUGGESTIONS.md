@@ -38,30 +38,40 @@ rather than merely incomplete.
 
 | # | Option | What it gets you | Effort / cost | Status |
 |---|---|---|---|---|
-| 1 | **Honest reframing** — UI copy makes clear a marker is a block/segment, not a single space; crowd reports are phrased as "someone saw *an* opening" rather than implying the specific spot is free | Sets correct expectations; costs nothing, fixes a real trust problem | Low | **In progress** |
-| 2 | **Multi-report confidence** — track multiple recent reports per block instead of one overwritable flag, show a confidence level (e.g. "2 people reported an opening in the last 10 min") | More honest and more useful than a single stale/overwritable report | Low–Medium | **In progress** |
+| 1 | **Honest reframing** — UI copy makes clear a marker is a block/segment, not a single space; crowd reports are phrased as "someone saw *an* opening" rather than implying the specific spot is free | Sets correct expectations; costs nothing, fixes a real trust problem | Low | **Done** |
+| 2 | **Multi-report confidence** — track multiple recent reports per block instead of one overwritable flag, show a confidence level (e.g. "2 people reported an opening in the last 10 min") | More honest and more useful than a single stale/overwritable report | Low–Medium | **Done** |
 | 3 | **Cover garages/lots, not just on-street** | Off-street facilities are the one place *genuine* real-time space counts commonly exist (many operators publish live counts). Adding them would give part of the app real, verified availability instead of estimates everywhere | Medium (new data source, new UI treatment) | Not started |
 | 4 | **Paid live-occupancy provider** (e.g. Parknav, SpotHero) for areas they cover | The only way to get verified on-street availability at scale | Medium effort, real recurring cost, requires signing up for a paid account | Not started — previously declined for the Redis/Marketplace billing step; would need a fresh decision |
 | 5 | **Predictive/historical hints** — use NYC's parking violation ticket volume by block/hour to show "usually busy at this time" | A statistically-grounded estimate, clearly labeled as such, better than nothing between reports | Medium (new dataset, needs its own honesty framing so it doesn't get read as certainty) | Not started |
 
-## What's being built now (#1 and #2)
+## What was built (#1 and #2)
 
 **#1 — Honest reframing:**
-- Popup/report copy already changed to "I saw an opening here" / "someone
-  saw an opening here" (not "this spot is open") as part of removing "taken".
-- Add a short, visible explanation (e.g. a legend note or info tooltip) that
-  a marker = a block segment that may hold multiple spaces, not one space.
-- Audit remaining UI/chat-assistant copy for language that overstates
-  certainty (e.g. avoid "the spot is free," prefer "parking is legal here
-  right now").
+- Popup/report copy reads "I saw an opening here" / "N people saw an
+  opening on this block" — never implies a single space is confirmed free.
+- Added a visible **ⓘ info icon** next to the map legend (`page.tsx`) with a
+  tooltip explaining that a marker = a block-face segment that may hold
+  multiple spaces, and that crowd reports mean "at least one opening seen,"
+  not "this exact spot is free."
+- Header subtitle changed to "Legal parking status by block, computed live
+  — not a live occupancy feed."
+- AI assistant instructions (`parking-agent.ts`) explicitly told to describe
+  results as block segments and never imply single-space certainty.
 
 **#2 — Multi-report confidence:**
-- Replace the single overwrite-on-report model (last report wins, no
-  memory of earlier ones) with a rolling window of recent reports per
-  block (Redis sorted set, same 30-minute TTL philosophy).
-- Show a simple confidence tier from the count of distinct recent reports
-  (e.g. 1 = low, 2 = medium, 3+ = high) instead of a bare yes/no, so the UI
-  reflects actual corroboration rather than one person's single tap.
+- Replaced the single overwrite-on-report model with a corroboration
+  counter per spot (`src/lib/occupancy.ts`): each new report within the
+  rolling 30-minute window increments `reportCount` (capped at 5) and
+  refreshes the window; no report for 30+ minutes and it resets to zero.
+- Confidence tier derived from count: 1 = low, 2 = medium, 3+ = high
+  (`confidenceFor()`), shown in the map popup, the AI assistant's tool
+  results, and used to rank chat results (higher confidence sorts first).
+- Chose a simple refresh-on-report counter over a true sorted-set/pruned
+  window (the originally sketched design) because it needs only one GET +
+  one SET per report (no pipelining, no per-read pruning across up to 400
+  spots) and is simpler to reason about, at the honestly-stated cost of not
+  distinguishing "3 reports in the last 2 minutes" from "3 reports spread
+  across 29 minutes" — both currently read as "high confidence."
 
 ## Why not #3/#4/#5 right now
 

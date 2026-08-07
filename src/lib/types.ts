@@ -7,11 +7,19 @@ export interface MeterStatus {
   limitMinutes: number | null;
 }
 
+export type ConfidenceLevel = "low" | "medium" | "high";
+
 // Only "reported open" is tracked — a "taken" report on a spot that
 // represents a whole block-face (often several physical spaces) doesn't
 // mean much, since other spaces on the same block could still be open.
+// reportCount tracks corroborating reports within the current rolling
+// window (resets once REPORT_TTL_SECONDS passes with no new report), giving
+// a rough confidence signal instead of one person's single, overwritable tap.
 export interface OccupancyReport {
-  reportedAt: number;
+  reportCount: number;
+  firstReportedAt: number;
+  lastReportedAt: number;
+  confidence: ConfidenceLevel;
 }
 
 export interface ParkingSpot {

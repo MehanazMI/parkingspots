@@ -22,11 +22,13 @@ function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number)
   return R * 2 * Math.asin(Math.sqrt(h));
 }
 
+const CONFIDENCE_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
+
 function rankScore(spot: ParkingSpot): number {
-  if (spot.occupancy) return 0;
-  if (spot.status.value === "free") return 1;
-  if (spot.status.value === "metered") return 2;
-  return 3;
+  if (spot.occupancy) return CONFIDENCE_RANK[spot.occupancy.confidence]; // 0-2, always ahead of unreported spots
+  if (spot.status.value === "free") return 3;
+  if (spot.status.value === "metered") return 4;
+  return 5;
 }
 
 export const findParkingTool = tool({

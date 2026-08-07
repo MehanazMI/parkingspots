@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRedis } from "@/lib/redis";
-import { reportKey, REPORT_TTL_SECONDS } from "@/lib/occupancy";
+import { recordReport } from "@/lib/occupancy";
 
 export async function POST(req: NextRequest) {
   const redis = getRedis();
@@ -24,8 +24,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Body must be { spotId: string }" }, { status: 400 });
   }
 
-  const reportedAt = Date.now();
-  await redis.set(reportKey(spotId), { reportedAt }, { ex: REPORT_TTL_SECONDS });
-
-  return NextResponse.json({ reportedAt });
+  const occupancy = await recordReport(spotId);
+  return NextResponse.json(occupancy);
 }

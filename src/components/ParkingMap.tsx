@@ -4,7 +4,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
-import type { BoundingBox, ParkingSpot } from "@/lib/types";
+import type { BoundingBox, ConfidenceLevel, ParkingSpot } from "@/lib/types";
 
 // Default Leaflet marker icons reference files that don't survive bundling;
 // point them at the CDN copies instead.
@@ -60,6 +60,12 @@ function timeAgo(reportedAt: number): string {
   if (minutes === 1) return "1 min ago";
   return `${minutes} min ago`;
 }
+
+const CONFIDENCE_LABEL: Record<ConfidenceLevel, string> = {
+  low: "Low confidence",
+  medium: "Medium confidence",
+  high: "High confidence",
+};
 
 interface FlyToTarget {
   lat: number;
@@ -120,8 +126,14 @@ function OccupancySection({ spot, onReport }: OccupancySectionProps) {
     <div className="mt-2 border-t border-gray-200 pt-2">
       {spot.occupancy ? (
         <p className="text-xs text-gray-600">
-          Crowd report: <span className="font-medium" style={{ color: OCCUPANCY_RING_COLOR }}>someone saw an opening here</span>{" "}
-          ({timeAgo(spot.occupancy.reportedAt)})
+          <span className="font-medium" style={{ color: OCCUPANCY_RING_COLOR }}>
+            {spot.occupancy.reportCount === 1
+              ? "1 person"
+              : `${spot.occupancy.reportCount}${spot.occupancy.reportCount >= 5 ? "+" : ""} people`}{" "}
+            saw an opening on this block
+          </span>{" "}
+          ({timeAgo(spot.occupancy.lastReportedAt)}) ·{" "}
+          <span className="font-medium">{CONFIDENCE_LABEL[spot.occupancy.confidence]}</span>
         </p>
       ) : (
         <p className="text-xs text-gray-400">No recent crowd reports for this block.</p>
