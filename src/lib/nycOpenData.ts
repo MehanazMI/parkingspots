@@ -56,6 +56,7 @@ export async function fetchStreetSpots(bbox: BoundingBox): Promise<StreetSpot[]>
         meterHours,
         status: getMeterStatus(meterHours, now),
         occupancy: null,
+        rate: null,
       } satisfies StreetSpot;
     });
 }

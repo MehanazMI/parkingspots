@@ -24,6 +24,13 @@ export interface OccupancyReport {
 
 export type FacilityType = "street" | "garage";
 
+/** Posted hourly rate for the meter zone a spot falls in (not spot-specific — a whole zone shares one rate). */
+export interface ZoneRate {
+  zoneName: string;
+  hourlyRate: number;
+  rawRateText: string;
+}
+
 /** An on-street metered block-face segment, from NYC Open Data's parking meters dataset. */
 export interface StreetSpot {
   facilityType: "street";
@@ -38,6 +45,7 @@ export interface StreetSpot {
   meterHours: string;
   status: MeterStatus;
   occupancy: OccupancyReport | null;
+  rate: ZoneRate | null;
 }
 
 /**

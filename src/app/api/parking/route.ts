@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { fetchGarages } from "@/lib/garages";
+import { attachZoneRate } from "@/lib/meterRates";
 import { fetchStreetSpots } from "@/lib/nycOpenData";
 import { attachOccupancy } from "@/lib/occupancy";
 import type { ParkingSpot } from "@/lib/types";
@@ -33,7 +34,8 @@ export async function GET(req: NextRequest) {
 
     if (type === "street" || type === "both") {
       const streetSpots = await fetchStreetSpots(bbox);
-      spots.push(...(await attachOccupancy(streetSpots)));
+      const withOccupancy = await attachOccupancy(streetSpots);
+      spots.push(...(await attachZoneRate(withOccupancy, bbox)));
     }
     if (type === "garage" || type === "both") {
       spots.push(...(await fetchGarages(bbox)));

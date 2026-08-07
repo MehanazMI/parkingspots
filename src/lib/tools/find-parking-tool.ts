@@ -2,6 +2,8 @@ import { tool } from "ai";
 import { z } from "zod";
 import { fetchGarages } from "@/lib/garages";
 import { geocode } from "@/lib/geocode";
+import { haversineMeters } from "@/lib/geo";
+import { attachZoneRate } from "@/lib/meterRates";
 import { fetchStreetSpots } from "@/lib/nycOpenData";
 import { attachOccupancy } from "@/lib/occupancy";
 import type { GarageSpot, ParkingSpot, StreetSpot } from "@/lib/types";
@@ -12,25 +14,22 @@ const LAT_DELTA = 0.004;
 const LNG_DELTA = 0.005;
 const MAX_RESULTS = 8;
 
-function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number): number {
-  const R = 6371000;
-  const toRad = (d: number) => (d * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
-  return R * 2 * Math.asin(Math.sqrt(h));
-}
-
 const CONFIDENCE_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
-function rankScore(spot: ParkingSpot): number {
+function relevanceRank(spot: ParkingSpot): number {
   if (spot.facilityType === "street" && spot.occupancy) return CONFIDENCE_RANK[spot.occupancy.confidence]; // 0-2
   if (spot.facilityType === "street" && spot.status.value === "free") return 3;
   if (spot.facilityType === "street" && spot.status.value === "metered") return 4;
   if (spot.facilityType === "garage") return 5;
   return 6; // street, unknown status
+}
+
+// Garages have no rate data (see GARAGE_DATA_RESEARCH.md), and street spots
+// only have a rate when they fall inside a known meter rate zone — both
+// sort to the end when the user asked for cheapest-first, since "no data"
+// isn't the same as "free."
+function costRank(spot: ParkingSpot): number {
+  return spot.facilityType === "street" && spot.rate ? spot.rate.hourlyRate : Number.POSITIVE_INFINITY;
 }
 
 function formatStreetResult(spot: StreetSpot, distanceMeters: number) {
@@ -48,6 +47,8 @@ function formatStreetResult(spot: StreetSpot, distanceMeters: number) {
     statusDetail: spot.status.detail,
     limitMinutes: spot.status.limitMinutes,
     occupancy: spot.occupancy,
+    hourlyRate: spot.rate?.hourlyRate ?? null,
+    rateZone: spot.rate?.zoneName ?? null,
   };
 }
 
@@ -67,9 +68,10 @@ function formatGarageResult(spot: GarageSpot, distanceMeters: number) {
 export const findParkingTool = tool({
   description:
     "Find real, currently-tracked NYC parking near a given area: on-street metered spots " +
-    "and/or off-street garages, optionally requiring a minimum parking duration. Only returns " +
-    "results the app actually has data for right now — never invent results beyond what this " +
-    "tool returns. No rate/price data exists for either type in the app's current data sources.",
+    "and/or off-street garages, optionally requiring a minimum parking duration, and optionally " +
+    "sorted by cost. Only returns results the app actually has data for right now — never invent " +
+    "results beyond what this tool returns. Street spots often (not always) have a posted hourly " +
+    "rate from NYC's meter rate-zone data; garages have no rate data in any current source.",
   inputSchema: z.object({
     area: z
       .string()
@@ -91,8 +93,17 @@ export const findParkingTool = tool({
         "Only pass this if the user specifically asks for on-street parking, a garage/lot, or both. " +
           "Omit it (defaults to both) if they didn't specify."
       ),
+    sortBy: z
+      .enum(["relevance", "cost"])
+      .optional()
+      .describe(
+        "Pass \"cost\" only if the user explicitly asks for the cheapest/lowest-cost option. This " +
+          "ranks street spots with a known hourly rate lowest-first; spots and garages with no rate " +
+          "data sort to the end (not treated as free). Omit otherwise (defaults to relevance: " +
+          "crowd-confirmed openings, then free, then metered, then garages, closest first within each)."
+      ),
   }),
-  execute: async ({ area, durationMinutes, facilityType = "both" }) => {
+  execute: async ({ area, durationMinutes, facilityType = "both", sortBy = "relevance" }) => {
     const geocoded = await geocode(area);
     const center = geocoded[0];
     if (!center) {
@@ -109,8 +120,9 @@ export const findParkingTool = tool({
     const candidates: ParkingSpot[] = [];
 
     if (facilityType === "street" || facilityType === "both") {
-      const streetSpots = await attachOccupancy(await fetchStreetSpots(bbox));
-      let filtered = streetSpots.filter((s) => s.status.value !== "unknown");
+      const withOccupancy = await attachOccupancy(await fetchStreetSpots(bbox));
+      const withRate = await attachZoneRate(withOccupancy, bbox);
+      let filtered = withRate.filter((s) => s.status.value !== "unknown");
       if (durationMinutes) {
         filtered = filtered.filter(
           (s) => s.status.value === "free" || (s.status.limitMinutes ?? 0) >= durationMinutes
@@ -122,16 +134,26 @@ export const findParkingTool = tool({
       candidates.push(...(await fetchGarages(bbox)));
     }
 
-    const ranked = candidates
-      .map((s) => ({ spot: s, distanceMeters: Math.round(haversineMeters(center.lat, center.lng, s.lat, s.lng)) }))
-      .sort((a, b) => rankScore(a.spot) - rankScore(b.spot) || a.distanceMeters - b.distanceMeters)
-      .slice(0, MAX_RESULTS);
+    const withDistance = candidates.map((s) => ({
+      spot: s,
+      distanceMeters: Math.round(haversineMeters(center.lat, center.lng, s.lat, s.lng)),
+    }));
+
+    const ranked =
+      sortBy === "cost"
+        ? withDistance.sort((a, b) => costRank(a.spot) - costRank(b.spot) || a.distanceMeters - b.distanceMeters)
+        : withDistance.sort(
+            (a, b) => relevanceRank(a.spot) - relevanceRank(b.spot) || a.distanceMeters - b.distanceMeters
+          );
+
+    const top = ranked.slice(0, MAX_RESULTS);
 
     return {
       area: center.label,
       center: { lat: center.lat, lng: center.lng },
-      resultCount: ranked.length,
-      spots: ranked.map(({ spot, distanceMeters }) =>
+      resultCount: top.length,
+      sortedBy: sortBy,
+      spots: top.map(({ spot, distanceMeters }) =>
         spot.facilityType === "street" ? formatStreetResult(spot, distanceMeters) : formatGarageResult(spot, distanceMeters)
       ),
     };

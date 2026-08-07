@@ -187,6 +187,11 @@ function StreetPopupContent({ spot, onReport }: { spot: StreetSpot; onReport: (s
       </p>
       <p className="mt-1 text-gray-600">{spot.status.detail}</p>
       <p className="mt-1 text-xs text-gray-400">Posted meter hours: {spot.meterHours || "n/a"}</p>
+      {spot.rate && (
+        <p className="mt-1 text-xs text-gray-500">
+          ${spot.rate.hourlyRate.toFixed(2)}/hr ({spot.rate.zoneName} zone) — 1st hour rate, All Vehicles
+        </p>
+      )}
       <OccupancySection spot={spot} onReport={onReport} />
     </>
   );

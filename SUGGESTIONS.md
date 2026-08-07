@@ -120,10 +120,40 @@ Not rejected — just bigger asks than a quick follow-up:
   #1's honesty-in-copy work is solid, so the pattern for "this is an
   estimate" is already established in the UI.
 
-## Cost sorting — next up
+## Cost sorting — done for street parking, still open for garages
 
-Not yet started. Needs its own research pass (like GARAGE_DATA_RESEARCH.md)
-into: NYC's meter rate-zone dataset for street parking rates, and some
-source for garage rates (none found free so far — may require scraping
-individual garage listings or a paid aggregator). Until then, no field
-exists to sort by.
+Researched before building, same as garages. Finding: NYC DOT's "Parking
+Meters - Citywide Rate Zones" dataset (`f72k-2u3b`) is genuinely usable —
+large neighborhood/borough polygons, each with a posted hourly rate in a
+free-text field (e.g. `"Zone M1 - ... All Vehicles: $5.50 1st Hour / $9.00
+2nd Hour..."`). Verified live: a point-in-polygon query
+(`intersects(the_geom, 'POINT(lng lat)')`) for Union Square correctly
+resolves to "Zone M1 - Midtown," $5.50/hr. Garage rates remain unavailable —
+also checked `dotprs.nyc` (NYC DOT's own municipal-garage reservation site)
+for a public API; it's a consumer-only web form with no documented data
+access, so that lead is now closed too, not just unverified.
+
+**What was built:**
+- `src/lib/meterRates.ts`: `fetchZoneRate(lat, lng)` does the point-in-polygon
+  lookup and regexes the "All Vehicles ... 1st Hour" rate out of the zone's
+  free-text field. Because these zones are large, the app queries the
+  *center* of a bounding box once and applies that single rate to every
+  street spot in it, rather than querying per spot — documented limitation:
+  a viewport straddling a zone boundary shows one zone's rate for the whole
+  area.
+- `StreetSpot` gained a `rate: { zoneName, hourlyRate, rawRateText } | null`
+  field, shown in the map popup, list panel rows, and AI assistant results.
+  Garages still show "no rate data" — consistent with GARAGE_DATA_RESEARCH.md.
+- **New sortable list panel** (`src/components/SpotListPanel.tsx`): a
+  left-docked panel (opposite the AI chat panel) listing every spot
+  currently loaded on the map, sortable by Distance or Cost. Cost sort
+  ranks street spots with a known rate lowest-first; spots and garages with
+  no rate data sort to the end — deliberately *not* treated as free.
+- `findParkingTool` gained a `sortBy: "relevance" | "cost"` param the AI
+  assistant passes only when the user explicitly asks for the
+  cheapest/lowest-cost option; the same "no-rate-data sorts last" rule
+  applies there too.
+
+**Still open:** no free rate source exists for garages (now confirmed
+across the DCA registry and `dotprs.nyc`) — a paid aggregator or
+per-garage-listing scrape would be the only way to close that gap.

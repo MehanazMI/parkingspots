@@ -41,6 +41,18 @@ in NYC's free open data (see
 ruled out). Use the **Street / Garages / Both** toggle in the toolbar to
 filter which type shows on the map (and in the AI assistant's results).
 
+### Cost — street rates and sorting
+
+Street spots often show a posted hourly rate (e.g. "$5.50/hr, Midtown
+zone") from NYC DOT's meter rate-zone data — shown in the map popup, the
+new **list panel**, and the AI assistant's results. There's a **List**
+button (bottom-left) that opens a panel of every spot currently loaded,
+sortable by Distance or Cost; ask the AI assistant for "the cheapest spot
+near X" and it sorts the same way. Garages have no rate data anywhere in
+NYC's free sources (see GARAGE_DATA_RESEARCH.md) — they, and any street
+spot outside a known rate zone, sort to the *end* under cost sorting
+rather than being treated as free.
+
 ### Crowdsourced occupancy (optional, street parking only)
 
 Since there's no free live-occupancy feed for on-street parking, metered
@@ -61,7 +73,8 @@ status as usual. (There's no equivalent for garages — see
 - **Tailwind CSS 4**
 - **Leaflet / react-leaflet** with OpenStreetMap tiles (no API key required)
 - **NYC Open Data** (Socrata) for parking meter locations + regulation text,
-  and for the DCA licensed-garage registry
+  the DCA licensed-garage registry, and meter rate-zone polygons (street
+  hourly rates)
 - **Nominatim (OpenStreetMap)** for address geocoding, proxied through a
   server route
 - **Upstash Redis** (optional) for crowdsourced occupancy reports, TTL'd
@@ -155,9 +168,13 @@ you're using them.
   than guessed.
 - Broader DOT regulation signs (no-standing, alternate-side, loading zones)
   aren't included yet — only meters and licensed garages.
-- No rate/price data exists for either street meters or garages in free NYC
-  data sources — cost-based sorting is a planned follow-up that needs its
-  own data source (see SUGGESTIONS.md).
+- Street rates come from large neighborhood/borough-sized zone polygons — a
+  viewport that straddles two rate zones will show one zone's rate for the
+  whole visible area (the app queries the zone at the viewport's center,
+  not per spot).
+- No rate/price data exists for garages in any free NYC data source (also
+  checked and ruled out: `dotprs.nyc`, DOT's own municipal-garage
+  reservation site) — see SUGGESTIONS.md.
 - Garage listings come from a DCA business-license registry, filtered to
   non-expired licenses — licensing can lag real-world status (a garage
   could have closed without the license record reflecting it yet).

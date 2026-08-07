@@ -209,8 +209,74 @@ which type to see.
 **A planning correction surfaced during this work:** the original plan was
 "build #3 first, then cost-sorting, since garages naturally carry
 pricing." That assumption didn't hold — the free garage dataset has no
-rate field, so cost-sorting still needs its own data source regardless of
-build order (see SUGGESTIONS.md's "Cost sorting — next up" section).
+rate field, so cost-sorting needed its own separate data source, built
+next.
+
+## Post-garage bug fixes: filter awareness
+
+Two real bugs surfaced once the garage filter shipped:
+
+1. **Highlighting silently did nothing under an active filter** — clicking
+   a chat/list result flew the map there, but if the current Street/Garage
+   filter excluded that result's type, the map never loaded it, so nothing
+   was there to highlight. Fixed in `handleSelectSpot` (`page.tsx`): switch
+   the filter to "Both" whenever a result is selected, guaranteeing it
+   loads.
+2. **The AI assistant ignored the active map filter**, always defaulting
+   to searching both types. Root cause of the fix's shape:
+   `createAgentUIStreamResponse` doesn't forward `runtimeContext`/
+   `toolsContext` to the underlying agent call (checked the AI SDK source
+   directly, not just docs, since the docs' `toolsContext` example is for
+   `agent.generate()`, not this streaming helper) — so passing the filter
+   that way wasn't an option. Instead, `parking-agent.ts` exports
+   `buildParkingAgent(activeFilter)`, constructing the `ToolLoopAgent`
+   fresh per request with filter-specific instructions appended (agents
+   are cheap config objects, not connections, so this is fine per-request).
+   `ChatPanel.tsx` sends the current filter via `sendMessage`'s `body`
+   option, read directly in the submit handler — not through a `useRef`,
+   which React's compiler-lint rule flags as unsafe to read inside a
+   closure constructed during render (the transport's lazy `useState`
+   initializer counts). `sendMessage(message, { body })` sidesteps that
+   entirely since it's a plain prop read inside an event handler.
+
+Both verified via curl (tool call's `facilityType` matches the active
+filter) and a full browser pass (filter auto-switches to Both, correct
+marker highlights).
+
+## Cost sorting + list panel
+
+Researched before building, same pattern as garages: NYC DOT's "Parking
+Meters - Citywide Rate Zones" (`f72k-2u3b`) turned out genuinely usable —
+large zone polygons, each with a posted hourly rate in a free-text field.
+Verified live via a point-in-polygon SoQL query
+(`intersects(the_geom, 'POINT(lng lat)')`) before writing any app code:
+Union Square correctly resolved to "Zone M1 - Midtown, $5.50/hr." Also
+closed out the garage-rate question definitively — checked `dotprs.nyc`
+(DOT's own municipal garage reservation site) for a public API; it's
+consumer-only, no documented data access, so no free garage rate source
+exists anywhere that was found.
+
+- `src/lib/meterRates.ts`: `fetchZoneRate(lat, lng)` — one point-in-polygon
+  query per bounding box (at its *center*, not per spot, since these zones
+  are large enough that a small map viewport essentially never spans two),
+  regexing the "All Vehicles ... 1st Hour" rate out of the zone's free-text
+  field. `attachZoneRate(spots, bbox)` applies the single result to every
+  street spot in that bbox.
+- `StreetSpot.rate: { zoneName, hourlyRate, rawRateText } | null` — shown
+  in the map popup, list panel, and AI results; garages and out-of-zone
+  street spots stay `null` rather than a guessed value.
+- New `src/components/SpotListPanel.tsx` — left-docked (opposite the chat
+  panel), listing every spot currently loaded, sortable by Distance or
+  Cost. Deliberately sorts no-rate results *last* under cost sort rather
+  than folding them in as free — same honesty principle as the rest of the
+  app. Reused `handleSelectSpot` (renamed from `handleSelectSpotFromChat`
+  since it's no longer chat-only) for fly-to/highlight, same as chat
+  results.
+- `findParkingTool` gained `sortBy: "relevance" | "cost"`; the agent's
+  instructions say to only pass `"cost"` when the user explicitly asks for
+  cheapest, and that no-rate results aren't free, just undocumented.
+- Extracted `haversineMeters` into `src/lib/geo.ts` (previously duplicated
+  inline in `find-parking-tool.ts`) since the list panel needed it too.
 
 ## Architecture
 
@@ -234,27 +300,34 @@ src/
                                 dropdown -> selecting flies the map there
     ChatPanel.tsx                Slide-over AI chat: useChat, renders
                                  tool-findParking results as street/garage
-                                 cards
+                                 cards, sends facilityFilter with each message
+    SpotListPanel.tsx             Left-docked sortable list (Distance/Cost)
+                                  of every spot currently loaded
     api/
       report/route.ts           POST { spotId } -> corroborating occupancy
                                  report (30-min rolling window) in Redis
-      chat/route.ts               POST -> createAgentUIStreamResponse(parkingAgent)
+      chat/route.ts               POST -> createAgentUIStreamResponse(
+                                  buildParkingAgent(facilityFilter))
   lib/
     types.ts                   StreetSpot, GarageSpot, ParkingSpot union,
-                                MeterStatus, OccupancyReport, BoundingBox
+                                MeterStatus, OccupancyReport, ZoneRate, BoundingBox
     meterHours.ts               Free-text meter-hours parser + status evaluator
     nycOpenData.ts               Fetches + normalizes street meter records
     garages.ts                    Fetches + normalizes DCA garage records
+    meterRates.ts                  Zone rate point-in-polygon lookup + parser
+    geo.ts                          Shared haversineMeters()
     redis.ts                     Lazy Upstash Redis client (null if unconfigured)
     occupancy.ts                  Report key/TTL, confidence tiers, attachOccupancy()
     geocode.ts                     Shared Nominatim geocode() — used by
                                    /api/geocode and the AI tool
     tools/
       find-parking-tool.ts          AI tool: geocode + street/garage fetch +
-                                    attachOccupancy + duration filter + rank
+                                    attachOccupancy + attachZoneRate +
+                                    duration filter + relevance/cost rank
     agents/
-      parking-agent.ts               ToolLoopAgent (gpt-5.4-mini), grounding
-                                     instructions, InferAgentUIMessage export
+      parking-agent.ts               buildParkingAgent(activeFilter) ->
+                                     ToolLoopAgent (gpt-5.4-mini) with
+                                     filter-aware instructions per request
 ```
 
 ### Request flow
@@ -266,12 +339,14 @@ src/
    (debounced 500ms on pan/zoom).
 3. `/api/parking` fetches street spots (Socrata `693u-uax6`,
    `within_box(location, …) AND status='Active'`, capped at 400, live
-   status computed server-side) and/or garages (Socrata `5bhr-pjxt`,
-   numeric lat/long range + active-license filter, capped at 200) based on
-   `type`, merges, returns JSON.
+   status computed server-side, occupancy attached, one zone-rate lookup
+   applied to all of them) and/or garages (Socrata `5bhr-pjxt`, numeric
+   lat/long range + active-license filter, capped at 200) based on `type`,
+   merges, returns JSON.
 4. Street markers are colored green (free) / red (metered) / gray
    (unknown); garage markers are square and indigo. Clicking either shows
-   a type-appropriate popup.
+   a type-appropriate popup, including the zone rate for street spots when
+   known.
 
 ## Verification performed
 
@@ -308,6 +383,20 @@ src/
   capacity-not-availability copy, and asked the AI assistant "is there a
   garage near Union Square" and confirmed it returned real garages with a
   GARAGE badge. Zero console errors throughout.
+- Filter-awareness fixes: verified via curl that the tool's `facilityType`
+  input matches the active map filter under each of street/garage/both,
+  and via Playwright that selecting a garage result while filtered to
+  "Street" auto-switches to "Both" and correctly highlights the marker.
+- Cost/rate feature: verified the point-in-polygon zone query directly via
+  curl before writing any app code (Union Square → Midtown, $5.50/hr), then
+  confirmed via `/api/parking` that all 177 street spots in a test bbox got
+  the rate attached, then a full Playwright pass on the new list panel —
+  opened it, confirmed row count and rate display, toggled Distance/Cost
+  sort, clicked a row and confirmed it flew/highlighted correctly. Also
+  confirmed the AI assistant passes `sortBy: "cost"` when asked for the
+  cheapest option. Caught and fixed one real local-dev usability bug along
+  the way: the new "List" button's bottom-left position collided with
+  Next.js's dev-mode indicator badge, blocking clicks — moved it up.
 
 ## Known limitations / natural next steps
 
@@ -315,9 +404,10 @@ src/
   loading zones) still aren't included — only meters and licensed garages
   — since those live in a much larger, harder-to-parse dataset
   (`nfid-uabd`, coordinates in NY State Plane feet, free-text sign codes).
-- No rate/price data exists for either street meters or garages in the
-  data sources used — cost-based sorting needs its own research pass
-  before it can be built (tracked in SUGGESTIONS.md).
+- Street rates come from large zone polygons queried at the viewport's
+  center — a viewport straddling two rate zones shows one zone's rate for
+  the whole visible area. No rate data exists for garages anywhere free
+  (also checked and ruled out: `dotprs.nyc`).
 - Garage license data can lag reality (a garage could have closed without
   its DCA license record reflecting it).
 - Results capped at 400 street spots / 200 garages per viewport for map

@@ -18,8 +18,14 @@ Rules:
     concept — garages are just always available to park in during their hours, which this app
     doesn't currently have data on either.
 - Neither type tells you whether a specific space is empty right now — mention that limitation
-  if the user seems to be assuming certainty. Garages additionally have no rate/price data in
-  this app's current sources — if asked about cost, say so plainly rather than guessing a price.
+  if the user seems to be assuming certainty.
+- Street results sometimes have an hourlyRate and rateZone (from NYC's meter rate-zone data) —
+  mention it when present (e.g. "$5.50/hr in the Midtown zone"). Some street spots and all
+  garages have no rate data (hourlyRate is null / no field) — if asked about cost for one of
+  those, say plainly that no rate data is available rather than guessing a price.
+- Only pass sortBy: "cost" if the user explicitly asks for the cheapest/lowest-cost option.
+  Results with no rate data sort last when this is used, not treated as free — mention that if
+  the cheapest-sorted results include ones with no rate shown.
 - If a street result has an occupancy report, it has a reportCount and confidence ("low" = 1
   report, "medium" = 2, "high" = 3+ corroborating reports within the last ~30 min). Mention the
   count/confidence when relevant, but always note it's an unverified sighting of "at least one

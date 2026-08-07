@@ -4,9 +4,11 @@ import dynamic from "next/dynamic";
 import { useCallback, useMemo, useRef, useState } from "react";
 import ChatPanel from "@/components/ChatPanel";
 import SearchBar from "@/components/SearchBar";
+import SpotListPanel from "@/components/SpotListPanel";
 import type { BoundingBox, ParkingSpot } from "@/lib/types";
 
 type FacilityFilter = "street" | "garage" | "both";
+type SortBy = "distance" | "cost";
 
 const ParkingMap = dynamic(() => import("@/components/ParkingMap"), {
   ssr: false,
@@ -24,6 +26,8 @@ export default function Home() {
   const [chatOpen, setChatOpen] = useState(false);
   const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
   const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>("both");
+  const [listOpen, setListOpen] = useState(false);
+  const [sortBy, setSortBy] = useState<SortBy>("distance");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadSpots = useCallback(
@@ -81,11 +85,11 @@ export default function Home() {
     setFlyTo({ lat: result.lat, lng: result.lng, zoom: 17 });
   }, []);
 
-  const handleSelectSpotFromChat = useCallback((spot: { id: string; lat: number; lng: number }) => {
+  const handleSelectSpot = useCallback((spot: { id: string; lat: number; lng: number }) => {
     setHighlightedSpotId(spot.id);
-    // A chat result may be a type the current filter is hiding (e.g. a garage
-    // while "Street" is selected) — switch to "Both" so it's guaranteed to
-    // actually load and be highlightable, rather than silently doing nothing.
+    // A chat or list-panel result may be a type the current filter is hiding
+    // (e.g. a garage while "Street" is selected) — switch to "Both" so it's
+    // guaranteed to actually load and be highlightable, not silently do nothing.
     setFacilityFilter("both");
     setFlyTo({ lat: spot.lat, lng: spot.lng, zoom: 18, spotId: spot.id });
   }, []);
@@ -102,6 +106,11 @@ export default function Home() {
       prev.map((s) => (s.facilityType === "street" && s.id === spotId ? { ...s, occupancy } : s))
     );
   }, []);
+
+  const mapCenter = useMemo(() => {
+    if (!lastBbox) return null;
+    return { lat: (lastBbox.north + lastBbox.south) / 2, lng: (lastBbox.east + lastBbox.west) / 2 };
+  }, [lastBbox]);
 
   const counts = useMemo(() => {
     const streetSpots = spots.filter((s): s is Extract<ParkingSpot, { facilityType: "street" }> => s.facilityType === "street");
@@ -195,10 +204,30 @@ export default function Home() {
           </button>
         )}
 
+        {!listOpen && (
+          <button
+            type="button"
+            onClick={() => setListOpen(true)}
+            className="absolute bottom-20 left-4 z-[1000] rounded-full border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 shadow-lg hover:bg-gray-50"
+          >
+            List
+          </button>
+        )}
+
+        <SpotListPanel
+          open={listOpen}
+          onClose={() => setListOpen(false)}
+          spots={spots}
+          center={mapCenter}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+          onSelectSpot={handleSelectSpot}
+        />
+
         <ChatPanel
           open={chatOpen}
           onClose={() => setChatOpen(false)}
-          onSelectSpot={handleSelectSpotFromChat}
+          onSelectSpot={handleSelectSpot}
           facilityFilter={facilityFilter}
         />
       </div>

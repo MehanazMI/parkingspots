@@ -34,6 +34,8 @@ interface StreetToolSpot {
   statusDetail: string;
   limitMinutes: number | null;
   occupancy: { reportCount: number; confidence: "low" | "medium" | "high" } | null;
+  hourlyRate: number | null;
+  rateZone: string | null;
 }
 
 interface GarageToolSpot {
@@ -94,6 +96,9 @@ function SpotResultCard({ spot, onSelect }: { spot: ToolSpot; onSelect: () => vo
       </div>
       <p className="text-gray-500">
         Between {spot.fromStreet} &amp; {spot.toStreet} · {spot.distanceMeters}m away
+      </p>
+      <p className="text-gray-400">
+        {spot.hourlyRate !== null ? `$${spot.hourlyRate.toFixed(2)}/hr (${spot.rateZone})` : "no rate data"}
       </p>
       {spot.occupancy && (
         <p className="text-blue-700">
