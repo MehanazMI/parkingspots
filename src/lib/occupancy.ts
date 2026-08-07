@@ -1,5 +1,5 @@
 import { getRedis } from "./redis";
-import type { OccupancyReport, OccupancyStatus, ParkingSpot } from "./types";
+import type { OccupancyReport, ParkingSpot } from "./types";
 
 export const REPORT_TTL_SECONDS = 30 * 60; // reports expire after 30 minutes
 
@@ -7,16 +7,11 @@ export function reportKey(spotId: string): string {
   return `report:${spotId}`;
 }
 
-export function isOccupancyStatus(value: unknown): value is OccupancyStatus {
-  return value === "open" || value === "taken";
-}
-
 export function parseReport(raw: unknown): OccupancyReport | null {
   if (!raw || typeof raw !== "object") return null;
-  const status = (raw as Record<string, unknown>).status;
   const reportedAt = (raw as Record<string, unknown>).reportedAt;
-  if (!isOccupancyStatus(status) || typeof reportedAt !== "number") return null;
-  return { status, reportedAt };
+  if (typeof reportedAt !== "number") return null;
+  return { reportedAt };
 }
 
 /** Mutates nothing; returns spots with `occupancy` filled in from any live reports. No-ops if Redis isn't configured. */

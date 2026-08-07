@@ -7,10 +7,10 @@ export interface MeterStatus {
   limitMinutes: number | null;
 }
 
-export type OccupancyStatus = "open" | "taken";
-
+// Only "reported open" is tracked — a "taken" report on a spot that
+// represents a whole block-face (often several physical spaces) doesn't
+// mean much, since other spaces on the same block could still be open.
 export interface OccupancyReport {
-  status: OccupancyStatus;
   reportedAt: number;
 }
 

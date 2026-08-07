@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useMemo, useRef, useState } from "react";
 import ChatPanel from "@/components/ChatPanel";
 import SearchBar from "@/components/SearchBar";
-import type { BoundingBox, OccupancyStatus, ParkingSpot } from "@/lib/types";
+import type { BoundingBox, ParkingSpot } from "@/lib/types";
 
 const ParkingMap = dynamic(() => import("@/components/ParkingMap"), {
   ssr: false,
@@ -71,19 +71,15 @@ export default function Home() {
     setFlyTo({ lat: spot.lat, lng: spot.lng, zoom: 18, spotId: spot.id });
   }, []);
 
-  const handleReport = useCallback(async (spotId: string, status: OccupancyStatus) => {
+  const handleReport = useCallback(async (spotId: string) => {
     const res = await fetch("/api/report", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ spotId, status }),
+      body: JSON.stringify({ spotId }),
     });
     if (!res.ok) throw new Error("Report failed");
     const data = await res.json();
-    setSpots((prev) =>
-      prev.map((s) =>
-        s.id === spotId ? { ...s, occupancy: { status: data.status, reportedAt: data.reportedAt } } : s
-      )
-    );
+    setSpots((prev) => prev.map((s) => (s.id === spotId ? { ...s, occupancy: { reportedAt: data.reportedAt } } : s)));
   }, []);
 
   const counts = useMemo(() => {
@@ -111,10 +107,7 @@ export default function Home() {
             <span className="inline-block h-3 w-3 rounded-full bg-red-600" /> Metered now ({counts.metered})
           </span>
           <span className="flex items-center gap-1.5 text-gray-500">
-            <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd: open
-          </span>
-          <span className="flex items-center gap-1.5 text-gray-500">
-            <span className="inline-block h-3 w-3 rounded-full border-2 border-orange-600" /> Crowd: taken
+            <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd-reported opening
           </span>
           {loading && <span className="text-gray-400">Loading…</span>}
           {error && <span className="text-red-600">{error}</span>}

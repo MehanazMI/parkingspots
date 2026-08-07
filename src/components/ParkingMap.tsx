@@ -4,7 +4,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
-import type { BoundingBox, OccupancyStatus, ParkingSpot } from "@/lib/types";
+import type { BoundingBox, ParkingSpot } from "@/lib/types";
 
 // Default Leaflet marker icons reference files that don't survive bundling;
 // point them at the CDN copies instead.
@@ -24,9 +24,7 @@ function statusColor(status: ParkingSpot["status"]["value"]): string {
   return "#6b7280";
 }
 
-function occupancyRingColor(status: OccupancyStatus): string {
-  return status === "open" ? "#2563eb" : "#ea580c";
-}
+const OCCUPANCY_RING_COLOR = "#2563eb";
 
 // Leaflet's Marker replaces its DOM icon (and closes any open popup) whenever
 // it receives a new Icon *object*, even if it looks identical to the last
@@ -36,15 +34,13 @@ function occupancyRingColor(status: OccupancyStatus): string {
 const iconCache = new Map<string, L.DivIcon>();
 
 function spotIcon(spot: ParkingSpot, isHighlighted: boolean) {
-  const occupancyKey = spot.occupancy?.status ?? "none";
-  const cacheKey = `${spot.status.value}|${occupancyKey}|${isHighlighted}`;
+  const cacheKey = `${spot.status.value}|${!!spot.occupancy}|${isHighlighted}`;
   const cached = iconCache.get(cacheKey);
   if (cached) return cached;
 
   const color = statusColor(spot.status.value);
-  const ring = spot.occupancy ? occupancyRingColor(spot.occupancy.status) : null;
-  const shadow = ring
-    ? `box-shadow:0 0 0 3px ${ring}, 0 0 2px rgba(0,0,0,0.5);`
+  const shadow = spot.occupancy
+    ? `box-shadow:0 0 0 3px ${OCCUPANCY_RING_COLOR}, 0 0 2px rgba(0,0,0,0.5);`
     : `box-shadow:0 0 2px rgba(0,0,0,0.5);`;
   const size = isHighlighted ? 22 : 14;
   const border = isHighlighted ? 3 : 2;
@@ -99,24 +95,24 @@ function MoveEndController({ onMoveEnd }: { onMoveEnd: (bbox: BoundingBox) => vo
 
 interface OccupancySectionProps {
   spot: ParkingSpot;
-  onReport: (spotId: string, status: OccupancyStatus) => Promise<void>;
+  onReport: (spotId: string) => Promise<void>;
 }
 
 function OccupancySection({ spot, onReport }: OccupancySectionProps) {
-  const [submitting, setSubmitting] = useState<OccupancyStatus | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (spot.status.value !== "metered") return null;
 
-  async function handle(status: OccupancyStatus) {
-    setSubmitting(status);
+  async function handle() {
+    setSubmitting(true);
     setError(null);
     try {
-      await onReport(spot.id, status);
+      await onReport(spot.id);
     } catch {
       setError("Couldn't submit report — try again.");
     } finally {
-      setSubmitting(null);
+      setSubmitting(false);
     }
   }
 
@@ -124,36 +120,20 @@ function OccupancySection({ spot, onReport }: OccupancySectionProps) {
     <div className="mt-2 border-t border-gray-200 pt-2">
       {spot.occupancy ? (
         <p className="text-xs text-gray-600">
-          Crowd report:{" "}
-          <span
-            className="font-medium"
-            style={{ color: occupancyRingColor(spot.occupancy.status) }}
-          >
-            {spot.occupancy.status === "open" ? "someone saw this open" : "someone saw this taken"}
-          </span>{" "}
+          Crowd report: <span className="font-medium" style={{ color: OCCUPANCY_RING_COLOR }}>someone saw an opening here</span>{" "}
           ({timeAgo(spot.occupancy.reportedAt)})
         </p>
       ) : (
-        <p className="text-xs text-gray-400">No recent crowd reports for this spot.</p>
+        <p className="text-xs text-gray-400">No recent crowd reports for this block.</p>
       )}
-      <div className="mt-1.5 flex gap-2">
-        <button
-          type="button"
-          disabled={submitting !== null}
-          onClick={() => handle("open")}
-          className="rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
-        >
-          {submitting === "open" ? "Sending…" : "It's open"}
-        </button>
-        <button
-          type="button"
-          disabled={submitting !== null}
-          onClick={() => handle("taken")}
-          className="rounded border border-orange-300 bg-orange-50 px-2 py-1 text-xs font-medium text-orange-700 hover:bg-orange-100 disabled:opacity-50"
-        >
-          {submitting === "taken" ? "Sending…" : "It's taken"}
-        </button>
-      </div>
+      <button
+        type="button"
+        disabled={submitting}
+        onClick={handle}
+        className="mt-1.5 rounded border border-blue-300 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+      >
+        {submitting ? "Sending…" : "I saw an opening here"}
+      </button>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -167,7 +147,7 @@ interface ParkingMapProps {
   highlightedSpotId: string | null;
   onMoveEnd: (bbox: BoundingBox) => void;
   onReady: (bbox: BoundingBox) => void;
-  onReport: (spotId: string, status: OccupancyStatus) => Promise<void>;
+  onReport: (spotId: string) => Promise<void>;
 }
 
 export default function ParkingMap({

@@ -29,7 +29,7 @@ interface ToolSpot {
   status: string;
   statusDetail: string;
   limitMinutes: number | null;
-  occupancy: { status: "open" | "taken"; reportedAt: number } | null;
+  occupancy: { reportedAt: number } | null;
 }
 
 interface FindParkingOutput {
@@ -57,11 +57,7 @@ function SpotResultCard({ spot, onSelect }: { spot: ToolSpot; onSelect: () => vo
       <p className="text-gray-500">
         Between {spot.fromStreet} &amp; {spot.toStreet} · {spot.distanceMeters}m away
       </p>
-      {spot.occupancy && (
-        <p className={spot.occupancy.status === "open" ? "text-blue-700" : "text-orange-700"}>
-          Crowd report: {spot.occupancy.status}
-        </p>
-      )}
+      {spot.occupancy && <p className="text-blue-700">Crowd-reported opening nearby</p>}
     </button>
   );
 }

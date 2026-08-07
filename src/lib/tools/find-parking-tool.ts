@@ -23,7 +23,7 @@ function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number)
 }
 
 function rankScore(spot: ParkingSpot): number {
-  if (spot.occupancy?.status === "open") return 0;
+  if (spot.occupancy) return 0;
   if (spot.status.value === "free") return 1;
   if (spot.status.value === "metered") return 2;
   return 3;
