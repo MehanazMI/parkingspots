@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fetchParkingSpots } from "@/lib/nycOpenData";
+import { fetchGarages } from "@/lib/garages";
+import { fetchStreetSpots } from "@/lib/nycOpenData";
 import { attachOccupancy } from "@/lib/occupancy";
+import type { ParkingSpot } from "@/lib/types";
+
+type FacilityFilter = "street" | "garage" | "both";
+
+function parseFacilityFilter(value: string | null): FacilityFilter {
+  if (value === "street" || value === "garage") return value;
+  return "both";
+}
 
 export async function GET(req: NextRequest) {
   const params = req.nextUrl.searchParams;
@@ -8,6 +17,7 @@ export async function GET(req: NextRequest) {
   const south = parseFloat(params.get("south") ?? "");
   const east = parseFloat(params.get("east") ?? "");
   const west = parseFloat(params.get("west") ?? "");
+  const type = parseFacilityFilter(params.get("type"));
 
   if ([north, south, east, west].some((n) => Number.isNaN(n))) {
     return NextResponse.json(
@@ -16,10 +26,20 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const bbox = { north, south, east, west };
+
   try {
-    const spots = await fetchParkingSpots({ north, south, east, west });
-    const withOccupancy = await attachOccupancy(spots);
-    return NextResponse.json({ spots: withOccupancy });
+    const spots: ParkingSpot[] = [];
+
+    if (type === "street" || type === "both") {
+      const streetSpots = await fetchStreetSpots(bbox);
+      spots.push(...(await attachOccupancy(streetSpots)));
+    }
+    if (type === "garage" || type === "both") {
+      spots.push(...(await fetchGarages(bbox)));
+    }
+
+    return NextResponse.json({ spots });
   } catch (err) {
     console.error(err);
     return NextResponse.json({ error: "Failed to fetch parking data" }, { status: 502 });

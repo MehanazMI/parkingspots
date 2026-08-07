@@ -23,6 +23,9 @@ new greenfield project with its own git repo.
 | Repo visibility: **private** | User's explicit choice when asked. |
 | AI assistant model: **OpenAI direct** (`@ai-sdk/openai`), not Vercel AI Gateway | Vercel platform guidance defaults to the AI Gateway for AI SDK usage. Presented that as the recommended option, but flagged it needs an API key from the Vercel dashboard which may involve billing setup — given the earlier Redis/Marketplace billing friction, the user chose to bring their own OpenAI key directly instead, bypassing Vercel's Gateway/billing entirely. This is the explicit "user asked for direct provider wiring" exception to the gateway-by-default guidance. |
 | AI model: **`gpt-5.4-mini`** | Fetched the live model catalog (`ai-gateway.vercel.sh/v1/models`) rather than trusting training data, which was outdated (would have suggested `gpt-4.1-mini`). Picked the mini tier of the newest version for a cheap/fast tool-calling assistant; `gpt-5.4-nano` is available if even cheaper is wanted. |
+| Occupancy model: **reports corroborate, don't overwrite** | User pointed out that a single "taken" report on a spot representing a whole block-face (often several spaces) is misleading — other spaces on that block could still be open. Removed "taken" entirely; "open" reports now accumulate into a count/confidence tier within a rolling 30-min window instead of one person's report overwriting the last. |
+| Garage data source: **DCA "Parking Garage List"** (`5bhr-pjxt`), not the more literally-named "Active DCA-Licensed Garages and Parking Lots" (`a7m8-iids`) | Researched before building (GARAGE_DATA_RESEARCH.md) rather than assumed. The better-named dataset has 69,885 rows including non-parking businesses — untrustworthy despite its title. The one actually used has 2,704 rows, uniform `license_type: "Premises"`, and a reliably-parseable capacity field. |
+| `ParkingSpot` refactored to a discriminated union (`StreetSpot \| GarageSpot`) | Garages don't have meter status, occupancy, or street/cross-street fields — forcing them into the existing flat `ParkingSpot` shape would have meant fake/null values throughout. The union makes each variant's real shape explicit and lets TypeScript catch spots where garage-only or street-only code wasn't handling both cases. |
 
 ## What "status" actually means
 
@@ -171,42 +174,83 @@ which is wasteful and — combined with the dev double-invoke — made the
 symptom worse. Now caches icons by visual signature (status + occupancy +
 highlighted) so unchanged markers reuse the same instance.
 
+## Garage/lot layer
+
+Requested as suggestion #3 from the availability discussion, with an
+explicit ask to research the data *before* building (see
+[GARAGE_DATA_RESEARCH.md](GARAGE_DATA_RESEARCH.md)) and to let users choose
+which type to see.
+
+- `src/lib/types.ts`: `ParkingSpot` became `StreetSpot | GarageSpot`, keyed
+  by `facilityType`. Every consumer (map, page, AI tool, chat UI) now
+  branches on this discriminant rather than assuming one flat shape.
+- `src/lib/garages.ts`: queries NYC DCA's `5bhr-pjxt` resource. This
+  dataset has plain `latitude`/`longitude` number columns, not a combined
+  Point column like the meters dataset, so geo-filtering is a numeric
+  range `$where` clause instead of `within_box`. Also filters to
+  non-expired licenses and regexes the vehicle/bicycle capacity out of a
+  free-text `detail` field.
+- `/api/parking` gained `?type=street|garage|both` (default `both`),
+  fetching and merging both sources; occupancy attachment still only
+  applies to the street subset.
+- `page.tsx` got a **Street / Garages / Both** segmented control driving
+  that param, plus separate legend entries and counts per type.
+- `ParkingMap.tsx`: garages render as square indigo markers (vs. street's
+  colored circles) with their own popup (name, address, capacity labeled
+  "total, not live availability", explicit "no rate data" note) — no
+  occupancy-report UI, since that's street-only.
+- `find-parking-tool.ts` / `parking-agent.ts`: the AI assistant now
+  searches both types together by default, with an optional
+  `facilityType` param the model only sets when the user actually asked
+  for one kind specifically, and instructions telling it to describe
+  garage results differently (capacity, not status) and to say plainly
+  there's no price data if asked about cost.
+
+**A planning correction surfaced during this work:** the original plan was
+"build #3 first, then cost-sorting, since garages naturally carry
+pricing." That assumption didn't hold — the free garage dataset has no
+rate field, so cost-sorting still needs its own data source regardless of
+build order (see SUGGESTIONS.md's "Cost sorting — next up" section).
+
 ## Architecture
 
 ```
 src/
   app/
-    page.tsx                 Main UI: header, search bar, legend/counts, map
+    page.tsx                 Main UI: header, search bar, facility filter,
+                              legend/counts, map
     layout.tsx                Root layout, page metadata
     api/
-      parking/route.ts        GET ?north&south&east&west -> ParkingSpot[]
-                               Queries NYC Open Data (SoQL within_box),
-                               computes status per spot, 60s cache
+      parking/route.ts        GET ?north&south&east&west&type=street|garage|both
+                               -> ParkingSpot[] (merges street + garage
+                               sources per type param), 60s cache
       geocode/route.ts        GET ?q=<address> -> Nominatim results,
                                biased/bounded to NYC's bounding box
   components/
     ParkingMap.tsx             Leaflet map (client-only, dynamically
-                                imported): colored markers, popups,
-                                fly-to-location and move-end handlers
+                                imported): street circles + garage squares,
+                                type-specific popups, fly-to/move-end
     SearchBar.tsx               Address input -> /api/geocode -> results
                                 dropdown -> selecting flies the map there
     ChatPanel.tsx                Slide-over AI chat: useChat, renders
-                                 tool-findParking results as spot cards
+                                 tool-findParking results as street/garage
+                                 cards
     api/
-      report/route.ts           POST { spotId, status } -> writes a 30-min
-                                 TTL occupancy report to Redis
+      report/route.ts           POST { spotId } -> corroborating occupancy
+                                 report (30-min rolling window) in Redis
       chat/route.ts               POST -> createAgentUIStreamResponse(parkingAgent)
   lib/
-    types.ts                   Shared types: ParkingSpot, MeterStatus,
-                                OccupancyReport, BoundingBox
+    types.ts                   StreetSpot, GarageSpot, ParkingSpot union,
+                                MeterStatus, OccupancyReport, BoundingBox
     meterHours.ts               Free-text meter-hours parser + status evaluator
-    nycOpenData.ts               Fetches + normalizes NYC Open Data records
+    nycOpenData.ts               Fetches + normalizes street meter records
+    garages.ts                    Fetches + normalizes DCA garage records
     redis.ts                     Lazy Upstash Redis client (null if unconfigured)
-    occupancy.ts                  Report key/TTL, parsing, attachOccupancy()
+    occupancy.ts                  Report key/TTL, confidence tiers, attachOccupancy()
     geocode.ts                     Shared Nominatim geocode() — used by
                                    /api/geocode and the AI tool
     tools/
-      find-parking-tool.ts          AI tool: geocode + fetchParkingSpots +
+      find-parking-tool.ts          AI tool: geocode + street/garage fetch +
                                     attachOccupancy + duration filter + rank
     agents/
       parking-agent.ts               ToolLoopAgent (gpt-5.4-mini), grounding
@@ -216,16 +260,18 @@ src/
 ### Request flow
 
 1. Map mounts → reports its initial viewport bounds → `page.tsx` fetches
-   `/api/parking` for that bounding box.
-2. User pans/zooms or searches an address (geocoded via `/api/geocode`,
-   then the map flies there) → `moveend` fires → debounced 500ms → refetch
-   `/api/parking` for the new bounds.
-3. `/api/parking` queries Socrata's `693u-uax6` resource with a
-   `within_box(location, …) AND status='Active'` filter, capped at 400
-   results, computes each spot's live status server-side, returns JSON.
-4. Markers are colored green (free) / red (metered) / gray (unknown);
-   clicking one shows street, cross-streets, side, status detail, and the
-   raw posted meter hours.
+   `/api/parking` for that bounding box and the current facility filter.
+2. User pans/zooms, searches an address, or changes the Street/Garages/Both
+   filter → refetch `/api/parking` for the (possibly new) bounds and filter
+   (debounced 500ms on pan/zoom).
+3. `/api/parking` fetches street spots (Socrata `693u-uax6`,
+   `within_box(location, …) AND status='Active'`, capped at 400, live
+   status computed server-side) and/or garages (Socrata `5bhr-pjxt`,
+   numeric lat/long range + active-license filter, capped at 200) based on
+   `type`, merges, returns JSON.
+4. Street markers are colored green (free) / red (metered) / gray
+   (unknown); garage markers are square and indigo. Clicking either shows
+   a type-appropriate popup.
 
 ## Verification performed
 
@@ -254,15 +300,29 @@ src/
   all smoke-tested against the deployed URL after `vercel --prod`, confirming
   the Upstash env vars pushed via `vercel env add` actually reached
   production (not just local `.env.local`).
+- Garage layer: tested `/api/parking?type=garage` directly (confirmed real
+  DCA facility names/addresses/capacities), then `type=both` (confirmed
+  street + garage counts both present), then a full Playwright pass —
+  toggled Street/Garages/Both and confirmed marker counts changed each
+  time, clicked a garage marker and confirmed its popup showed the honest
+  capacity-not-availability copy, and asked the AI assistant "is there a
+  garage near Union Square" and confirmed it returned real garages with a
+  GARAGE badge. Zero console errors throughout.
 
 ## Known limitations / natural next steps
 
-- Only on-street metered spots are shown — no municipal lots/garages, and
-  no broader DOT regulations (no-standing, alternate-side parking, loading
-  zones) since those live in a much larger, harder-to-parse dataset
+- Broader DOT regulation signs (no-standing, alternate-side parking,
+  loading zones) still aren't included — only meters and licensed garages
+  — since those live in a much larger, harder-to-parse dataset
   (`nfid-uabd`, coordinates in NY State Plane feet, free-text sign codes).
-- Results capped at 400 per viewport for map performance; dense areas
-  (Midtown, Downtown) need zooming in to see everything in view.
+- No rate/price data exists for either street meters or garages in the
+  data sources used — cost-based sorting needs its own research pass
+  before it can be built (tracked in SUGGESTIONS.md).
+- Garage license data can lag reality (a garage could have closed without
+  its DCA license record reflecting it).
+- Results capped at 400 street spots / 200 garages per viewport for map
+  performance; dense areas (Midtown, Downtown) need zooming in to see
+  everything in view.
 - `meterHours.ts` handles the common `"NHR Class Day-Day HHMM-HHMM"`
   pattern (chained with `/` and `,`) but not every historical variant in
   the dataset — those fall back to "Unknown" rather than a wrong guess.

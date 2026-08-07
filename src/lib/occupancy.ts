@@ -1,5 +1,5 @@
 import { getRedis } from "./redis";
-import type { ConfidenceLevel, OccupancyReport, ParkingSpot } from "./types";
+import type { ConfidenceLevel, OccupancyReport, StreetSpot } from "./types";
 
 export const REPORT_TTL_SECONDS = 30 * 60; // rolling window: resets after 30 min with no new report
 const MAX_TRACKED_REPORTS = 5; // corroboration signal, not a precise count — cap it
@@ -64,7 +64,7 @@ export async function recordReport(spotId: string): Promise<OccupancyReport> {
 }
 
 /** Mutates nothing; returns spots with `occupancy` filled in from any live reports. No-ops if Redis isn't configured. */
-export async function attachOccupancy(spots: ParkingSpot[]): Promise<ParkingSpot[]> {
+export async function attachOccupancy(spots: StreetSpot[]): Promise<StreetSpot[]> {
   const redis = getRedis();
   if (!redis || spots.length === 0) return spots;
 

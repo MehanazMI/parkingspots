@@ -17,7 +17,8 @@ const STATUS_COLOR: Record<string, string> = {
   unknown: "bg-gray-500",
 };
 
-interface ToolSpot {
+interface StreetToolSpot {
+  facilityType: "street";
   id: string;
   onStreet: string;
   sideOfStreet: string;
@@ -32,6 +33,19 @@ interface ToolSpot {
   occupancy: { reportCount: number; confidence: "low" | "medium" | "high" } | null;
 }
 
+interface GarageToolSpot {
+  facilityType: "garage";
+  id: string;
+  name: string;
+  address: string;
+  lat: number;
+  lng: number;
+  distanceMeters: number;
+  vehicleCapacity: number | null;
+}
+
+type ToolSpot = StreetToolSpot | GarageToolSpot;
+
 interface FindParkingOutput {
   error?: string;
   area?: string;
@@ -40,6 +54,27 @@ interface FindParkingOutput {
 }
 
 function SpotResultCard({ spot, onSelect }: { spot: ToolSpot; onSelect: () => void }) {
+  if (spot.facilityType === "garage") {
+    return (
+      <button
+        type="button"
+        onClick={onSelect}
+        className="block w-full rounded border border-gray-200 bg-white px-2.5 py-1.5 text-left text-xs hover:bg-gray-50"
+      >
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-medium text-gray-900">{spot.name}</span>
+          <span className="rounded bg-indigo-600 px-1.5 py-0.5 text-[10px] font-medium text-white">GARAGE</span>
+        </div>
+        <p className="text-gray-500">
+          {spot.address} · {spot.distanceMeters}m away
+        </p>
+        <p className="text-gray-500">
+          {spot.vehicleCapacity !== null ? `${spot.vehicleCapacity} vehicle capacity (total, not live)` : "Capacity not on file"}
+        </p>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
@@ -89,7 +124,7 @@ export default function ChatPanel({ open, onClose, onSelectSpot }: ChatPanelProp
       <div className="flex items-center justify-between border-b border-gray-200 px-3 py-2.5">
         <div>
           <h2 className="text-sm font-semibold text-gray-900">Parking Assistant</h2>
-          <p className="text-xs text-gray-500">Ask about parking near an NYC address</p>
+          <p className="text-xs text-gray-500">Ask about street parking or garages near an NYC address</p>
         </div>
         <button
           type="button"
@@ -104,7 +139,7 @@ export default function ChatPanel({ open, onClose, onSelectSpot }: ChatPanelProp
       <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {messages.length === 0 && (
           <p className="text-xs text-gray-400">
-            Try: &quot;free parking near Union Square&quot; or &quot;a 2-hour spot near Times Square&quot;
+            Try: &quot;free parking near Union Square&quot; or &quot;a garage near Times Square&quot;
           </p>
         )}
         {messages.map((message) => (

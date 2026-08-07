@@ -1,7 +1,9 @@
 # NYC Parking Finder
 
-Find on-street metered parking in New York City and see whether each spot is
-**free** or **metered right now**, based on the posted meter hours.
+Find parking in New York City — both **on-street metered spots** (free or
+metered right now, based on posted meter hours) and **off-street
+garages/lots** (location + total capacity). Filter to either type or see
+both together.
 
 ## What this is (and isn't)
 
@@ -28,24 +30,38 @@ alternate-side parking, no-standing zones, construction closures, or other
 DOT regulations beyond meter hours — those live in a much larger, harder to
 parse dataset and are a natural next step.
 
-### Crowdsourced occupancy (optional)
+### Off-street garages/lots
 
-Since there's no free live-occupancy feed, metered spots also support
-**crowdsourced availability reports**: anyone can mark a spot "It's open" or
-"It's taken" from its map popup. Reports are anonymous, stored in Redis with
-a 30-minute TTL (so they auto-expire rather than go stale), and shown as a
-colored ring around the marker — 🔵 blue for "reported open", 🟠 orange for
-"reported taken". This is opt-in infrastructure: it only activates when
+Alongside meters, the app shows licensed garages/lots from NYC's DCA
+registry — 🟦 square markers, distinct from street parking's round ones.
+Each shows a name, address, and **total vehicle capacity** (a static
+license figure, not a live count). There's no rate/price data for garages
+in NYC's free open data (see
+[GARAGE_DATA_RESEARCH.md](GARAGE_DATA_RESEARCH.md) for what was checked and
+ruled out). Use the **Street / Garages / Both** toggle in the toolbar to
+filter which type shows on the map (and in the AI assistant's results).
+
+### Crowdsourced occupancy (optional, street parking only)
+
+Since there's no free live-occupancy feed for on-street parking, metered
+spots also support **crowdsourced reports**: anyone can tap "I saw an
+opening here" from a spot's popup. Multiple reports within a 30-minute
+window corroborate each other into a confidence level (low/medium/high)
+rather than one person's single, overwritable tap — shown as a blue ring
+around the marker plus the report count and confidence in the popup. This
+is opt-in infrastructure: it only activates when
 `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are configured (see
 below); without them, `/api/report` returns 503 and spots just show meter
-status as usual.
+status as usual. (There's no equivalent for garages — see
+`GARAGE_DATA_RESEARCH.md`.)
 
 ## Stack
 
 - **Next.js 16** (App Router, TypeScript, Turbopack)
 - **Tailwind CSS 4**
 - **Leaflet / react-leaflet** with OpenStreetMap tiles (no API key required)
-- **NYC Open Data** (Socrata) for parking meter locations + regulation text
+- **NYC Open Data** (Socrata) for parking meter locations + regulation text,
+  and for the DCA licensed-garage registry
 - **Nominatim (OpenStreetMap)** for address geocoding, proxied through a
   server route
 - **Upstash Redis** (optional) for crowdsourced occupancy reports, TTL'd
@@ -137,12 +153,18 @@ you're using them.
   HHMM-HHMM"`, optionally chained with `/` and `,`) but not every historical
   format in the dataset — unparseable entries are labeled "Unknown" rather
   than guessed.
-- Only on-street metered spots are shown; municipal lots/garages and
-  regulation signs (no-standing, alternate-side, loading zones) aren't
-  included yet.
-- Results are capped at 400 spots per viewport to keep the map responsive —
-  zoom in on dense areas (Midtown, Downtown) to see everything.
-- Crowdsourced reports are anonymous and unmoderated — anyone can mark any
-  spot open/taken, and nothing currently limits repeat/spam reports beyond
-  the 30-minute TTL. Fine for a demo; would need rate-limiting and/or a
-  trust signal before relying on it for real decisions.
+- Broader DOT regulation signs (no-standing, alternate-side, loading zones)
+  aren't included yet — only meters and licensed garages.
+- No rate/price data exists for either street meters or garages in free NYC
+  data sources — cost-based sorting is a planned follow-up that needs its
+  own data source (see SUGGESTIONS.md).
+- Garage listings come from a DCA business-license registry, filtered to
+  non-expired licenses — licensing can lag real-world status (a garage
+  could have closed without the license record reflecting it yet).
+- Results are capped at 400 street spots / 200 garages per viewport to keep
+  the map responsive — zoom in on dense areas (Midtown, Downtown) to see
+  everything.
+- Crowdsourced reports (street only) are anonymous and unmoderated — nothing
+  currently limits repeat/spam reports beyond the 30-minute rolling window.
+  Fine for a demo; would need rate-limiting and/or a trust signal before
+  relying on it for real decisions.

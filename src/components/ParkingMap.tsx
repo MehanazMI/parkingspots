@@ -4,7 +4,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
-import type { BoundingBox, ConfidenceLevel, ParkingSpot } from "@/lib/types";
+import type { BoundingBox, ConfidenceLevel, GarageSpot, ParkingSpot, StreetSpot } from "@/lib/types";
 
 // Default Leaflet marker icons reference files that don't survive bundling;
 // point them at the CDN copies instead.
@@ -18,13 +18,14 @@ const DEFAULT_ICON = L.icon({
   shadowSize: [41, 41],
 });
 
-function statusColor(status: ParkingSpot["status"]["value"]): string {
+function statusColor(status: StreetSpot["status"]["value"]): string {
   if (status === "free") return "#16a34a";
   if (status === "metered") return "#dc2626";
   return "#6b7280";
 }
 
 const OCCUPANCY_RING_COLOR = "#2563eb";
+const GARAGE_COLOR = "#4f46e5";
 
 // Leaflet's Marker replaces its DOM icon (and closes any open popup) whenever
 // it receives a new Icon *object*, even if it looks identical to the last
@@ -34,6 +35,22 @@ const OCCUPANCY_RING_COLOR = "#2563eb";
 const iconCache = new Map<string, L.DivIcon>();
 
 function spotIcon(spot: ParkingSpot, isHighlighted: boolean) {
+  if (spot.facilityType === "garage") {
+    const cacheKey = `garage|${isHighlighted}`;
+    const cached = iconCache.get(cacheKey);
+    if (cached) return cached;
+    const size = isHighlighted ? 20 : 13;
+    const border = isHighlighted ? 3 : 2;
+    const icon = L.divIcon({
+      className: isHighlighted ? "spot-marker-highlight" : "",
+      html: `<span style="display:block;width:${size}px;height:${size}px;border-radius:3px;background:${GARAGE_COLOR};border:${border}px solid white;box-shadow:0 0 2px rgba(0,0,0,0.5);"></span>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+    });
+    iconCache.set(cacheKey, icon);
+    return icon;
+  }
+
   const cacheKey = `${spot.status.value}|${!!spot.occupancy}|${isHighlighted}`;
   const cached = iconCache.get(cacheKey);
   if (cached) return cached;
@@ -100,7 +117,7 @@ function MoveEndController({ onMoveEnd }: { onMoveEnd: (bbox: BoundingBox) => vo
 }
 
 interface OccupancySectionProps {
-  spot: ParkingSpot;
+  spot: StreetSpot;
   onReport: (spotId: string) => Promise<void>;
 }
 
@@ -148,6 +165,59 @@ function OccupancySection({ spot, onReport }: OccupancySectionProps) {
       </button>
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
     </div>
+  );
+}
+
+function StreetPopupContent({ spot, onReport }: { spot: StreetSpot; onReport: (spotId: string) => Promise<void> }) {
+  return (
+    <>
+      <p className="font-semibold">
+        {spot.onStreet} ({spot.sideOfStreet} side)
+      </p>
+      <p className="text-gray-600">
+        Between {spot.fromStreet} &amp; {spot.toStreet}
+      </p>
+      <p className="mt-1">
+        <span
+          className="inline-block rounded px-1.5 py-0.5 text-xs font-medium text-white"
+          style={{ backgroundColor: statusColor(spot.status.value) }}
+        >
+          {spot.status.value.toUpperCase()}
+        </span>
+      </p>
+      <p className="mt-1 text-gray-600">{spot.status.detail}</p>
+      <p className="mt-1 text-xs text-gray-400">Posted meter hours: {spot.meterHours || "n/a"}</p>
+      <OccupancySection spot={spot} onReport={onReport} />
+    </>
+  );
+}
+
+function GaragePopupContent({ spot }: { spot: GarageSpot }) {
+  return (
+    <>
+      <p className="font-semibold">{spot.name}</p>
+      <p className="text-gray-600">
+        {spot.address || "Address unavailable"}
+        {spot.borough ? `, ${spot.borough}` : ""}
+      </p>
+      <p className="mt-1">
+        <span
+          className="inline-block rounded px-1.5 py-0.5 text-xs font-medium text-white"
+          style={{ backgroundColor: GARAGE_COLOR }}
+        >
+          GARAGE
+        </span>
+      </p>
+      <p className="mt-1 text-gray-600">
+        {spot.vehicleCapacity !== null ? `${spot.vehicleCapacity} vehicle capacity (total, not live availability)` : "Capacity not on file"}
+      </p>
+      {spot.bicycleCapacity !== null && spot.bicycleCapacity > 0 && (
+        <p className="text-gray-600">{spot.bicycleCapacity} bicycle capacity</p>
+      )}
+      <p className="mt-1 text-xs text-gray-400">
+        Rate not available in NYC's open data — check with the garage directly.
+      </p>
+    </>
   );
 }
 
@@ -224,23 +294,11 @@ export default function ParkingMap({
         >
           <Popup>
             <div className="text-sm">
-              <p className="font-semibold">
-                {spot.onStreet} ({spot.sideOfStreet} side)
-              </p>
-              <p className="text-gray-600">
-                Between {spot.fromStreet} &amp; {spot.toStreet}
-              </p>
-              <p className="mt-1">
-                <span
-                  className="inline-block rounded px-1.5 py-0.5 text-xs font-medium text-white"
-                  style={{ backgroundColor: statusColor(spot.status.value) }}
-                >
-                  {spot.status.value.toUpperCase()}
-                </span>
-              </p>
-              <p className="mt-1 text-gray-600">{spot.status.detail}</p>
-              <p className="mt-1 text-xs text-gray-400">Posted meter hours: {spot.meterHours || "n/a"}</p>
-              <OccupancySection spot={spot} onReport={onReport} />
+              {spot.facilityType === "garage" ? (
+                <GaragePopupContent spot={spot} />
+              ) : (
+                <StreetPopupContent spot={spot} onReport={onReport} />
+              )}
             </div>
           </Popup>
         </Marker>

@@ -1,5 +1,5 @@
 import { getMeterStatus } from "./meterHours";
-import type { BoundingBox, ParkingSpot } from "./types";
+import type { BoundingBox, StreetSpot } from "./types";
 
 const RESOURCE_URL = "https://data.cityofnewyork.us/resource/693u-uax6.json";
 const MAX_RESULTS = 400;
@@ -19,7 +19,7 @@ interface RawMeterRecord {
   long?: string;
 }
 
-export async function fetchParkingSpots(bbox: BoundingBox): Promise<ParkingSpot[]> {
+export async function fetchStreetSpots(bbox: BoundingBox): Promise<StreetSpot[]> {
   const where = `within_box(location, ${bbox.north}, ${bbox.west}, ${bbox.south}, ${bbox.east}) AND status='Active'`;
 
   const url = new URL(RESOURCE_URL);
@@ -44,6 +44,7 @@ export async function fetchParkingSpots(bbox: BoundingBox): Promise<ParkingSpot[
     .map((r) => {
       const meterHours = r.meter_hours ?? "";
       return {
+        facilityType: "street",
         id: r.objectid,
         lat: parseFloat(r.lat as string),
         lng: parseFloat(r.long as string),
@@ -52,10 +53,9 @@ export async function fetchParkingSpots(bbox: BoundingBox): Promise<ParkingSpot[
         toStreet: r.to_street ?? "",
         sideOfStreet: r.side_of_street ?? "",
         borough: r.borough ?? "",
-        facility: r.facility ?? "",
         meterHours,
         status: getMeterStatus(meterHours, now),
         occupancy: null,
-      } satisfies ParkingSpot;
+      } satisfies StreetSpot;
     });
 }

@@ -22,7 +22,11 @@ export interface OccupancyReport {
   confidence: ConfidenceLevel;
 }
 
-export interface ParkingSpot {
+export type FacilityType = "street" | "garage";
+
+/** An on-street metered block-face segment, from NYC Open Data's parking meters dataset. */
+export interface StreetSpot {
+  facilityType: "street";
   id: string;
   lat: number;
   lng: number;
@@ -31,11 +35,30 @@ export interface ParkingSpot {
   toStreet: string;
   sideOfStreet: string;
   borough: string;
-  facility: string;
   meterHours: string;
   status: MeterStatus;
   occupancy: OccupancyReport | null;
 }
+
+/**
+ * An off-street garage or lot, from NYC's DCA licensed-garage registry.
+ * No live occupancy or rate data exists for these in free sources — see
+ * GARAGE_DATA_RESEARCH.md. vehicleCapacity is a static total, not a live count.
+ */
+export interface GarageSpot {
+  facilityType: "garage";
+  id: string;
+  lat: number;
+  lng: number;
+  name: string;
+  address: string;
+  borough: string;
+  vehicleCapacity: number | null;
+  bicycleCapacity: number | null;
+  licenseExpiresAt: string | null;
+}
+
+export type ParkingSpot = StreetSpot | GarageSpot;
 
 export interface BoundingBox {
   north: number;

@@ -6,6 +6,8 @@ import ChatPanel from "@/components/ChatPanel";
 import SearchBar from "@/components/SearchBar";
 import type { BoundingBox, ParkingSpot } from "@/lib/types";
 
+type FacilityFilter = "street" | "garage" | "both";
+
 const ParkingMap = dynamic(() => import("@/components/ParkingMap"), {
   ssr: false,
   loading: () => <div className="flex h-full w-full items-center justify-center text-gray-400">Loading map…</div>,
@@ -21,44 +23,57 @@ export default function Home() {
   const [lastBbox, setLastBbox] = useState<BoundingBox | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
+  const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>("both");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadSpots = useCallback(async (bbox: BoundingBox) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams({
-        north: String(bbox.north),
-        south: String(bbox.south),
-        east: String(bbox.east),
-        west: String(bbox.west),
-      });
-      const res = await fetch(`/api/parking?${params.toString()}`);
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to load parking data");
-      setSpots(data.spots ?? []);
-    } catch {
-      setError("Couldn't load parking data for this area. Try panning or searching again.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const loadSpots = useCallback(
+    async (bbox: BoundingBox, filter: FacilityFilter) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams({
+          north: String(bbox.north),
+          south: String(bbox.south),
+          east: String(bbox.east),
+          west: String(bbox.west),
+          type: filter,
+        });
+        const res = await fetch(`/api/parking?${params.toString()}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Failed to load parking data");
+        setSpots(data.spots ?? []);
+      } catch {
+        setError("Couldn't load parking data for this area. Try panning or searching again.");
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
 
   const handleReady = useCallback(
     (bbox: BoundingBox) => {
       setLastBbox(bbox);
-      loadSpots(bbox);
+      loadSpots(bbox, facilityFilter);
     },
-    [loadSpots]
+    [loadSpots, facilityFilter]
   );
 
   const handleMoveEnd = useCallback(
     (bbox: BoundingBox) => {
       setLastBbox(bbox);
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => loadSpots(bbox), 500);
+      debounceRef.current = setTimeout(() => loadSpots(bbox, facilityFilter), 500);
     },
-    [loadSpots]
+    [loadSpots, facilityFilter]
+  );
+
+  const handleFilterChange = useCallback(
+    (filter: FacilityFilter) => {
+      setFacilityFilter(filter);
+      if (lastBbox) loadSpots(lastBbox, filter);
+    },
+    [lastBbox, loadSpots]
   );
 
   const handleSelect = useCallback((result: { lat: number; lng: number; label: string }) => {
@@ -79,13 +94,17 @@ export default function Home() {
     });
     if (!res.ok) throw new Error("Report failed");
     const occupancy = await res.json();
-    setSpots((prev) => prev.map((s) => (s.id === spotId ? { ...s, occupancy } : s)));
+    setSpots((prev) =>
+      prev.map((s) => (s.facilityType === "street" && s.id === spotId ? { ...s, occupancy } : s))
+    );
   }, []);
 
   const counts = useMemo(() => {
-    const free = spots.filter((s) => s.status.value === "free").length;
-    const metered = spots.filter((s) => s.status.value === "metered").length;
-    return { free, metered, total: spots.length };
+    const streetSpots = spots.filter((s): s is Extract<ParkingSpot, { facilityType: "street" }> => s.facilityType === "street");
+    const free = streetSpots.filter((s) => s.status.value === "free").length;
+    const metered = streetSpots.filter((s) => s.status.value === "metered").length;
+    const garages = spots.filter((s) => s.facilityType === "garage").length;
+    return { free, metered, garages, total: spots.length };
   }, [spots]);
 
   return (
@@ -99,19 +118,42 @@ export default function Home() {
       </header>
 
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700">
-        <div className="flex items-center gap-4">
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded-full bg-green-600" /> Free now ({counts.free})
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block h-3 w-3 rounded-full bg-red-600" /> Metered now ({counts.metered})
-          </span>
-          <span className="flex items-center gap-1.5 text-gray-500">
-            <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd-reported opening
-          </span>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex items-center gap-1 rounded-md border border-gray-300 bg-white p-0.5">
+            {(["both", "street", "garage"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => handleFilterChange(f)}
+                className={`rounded px-2.5 py-1 text-xs font-medium ${
+                  facilityFilter === f ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"
+                }`}
+              >
+                {f === "both" ? "Both" : f === "street" ? "Street" : "Garages"}
+              </button>
+            ))}
+          </div>
+          {facilityFilter !== "garage" && (
+            <>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded-full bg-green-600" /> Free now ({counts.free})
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-3 w-3 rounded-full bg-red-600" /> Metered now ({counts.metered})
+              </span>
+              <span className="flex items-center gap-1.5 text-gray-500">
+                <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd-reported opening
+              </span>
+            </>
+          )}
+          {facilityFilter !== "street" && (
+            <span className="flex items-center gap-1.5">
+              <span className="inline-block h-3 w-3 rounded-sm bg-indigo-600" /> Garages ({counts.garages})
+            </span>
+          )}
           <span
             className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500"
-            title="Each marker covers a block-face segment (curb between two cross streets), which often includes multiple parking spaces — not a single space. 'Free'/'Metered' reflects the posted legal status, computed live. A crowd report means someone recently saw an opening somewhere on that block, not that the whole block (or any specific space) is open."
+            title="Each street marker covers a block-face segment (curb between two cross streets), which often includes multiple parking spaces — not a single space. 'Free'/'Metered' reflects the posted legal status, computed live. A crowd report means someone recently saw an opening somewhere on that block, not that the whole block (or any specific space) is open. Garage markers show total licensed capacity, not live availability or rates."
           >
             i
           </span>
@@ -120,7 +162,7 @@ export default function Home() {
         </div>
         <button
           type="button"
-          onClick={() => lastBbox && loadSpots(lastBbox)}
+          onClick={() => lastBbox && loadSpots(lastBbox, facilityFilter)}
           className="rounded border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
         >
           Refresh
