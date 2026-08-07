@@ -5,6 +5,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import ChatPanel from "@/components/ChatPanel";
 import SearchBar from "@/components/SearchBar";
 import SpotListPanel from "@/components/SpotListPanel";
+import { STATUS_LABEL } from "@/lib/statusLabel";
 import type { BoundingBox, ParkingSpot } from "@/lib/types";
 
 type FacilityFilter = "street" | "garage" | "both";
@@ -149,7 +150,7 @@ export default function Home() {
           {facilityFilter !== "garage" && (
             <>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-3 w-3 rounded-full bg-green-600" /> Free now ({counts.free})
+                <span className="inline-block h-3 w-3 rounded-full bg-green-600" /> {STATUS_LABEL.free} now ({counts.free})
               </span>
               <span className="flex items-center gap-1.5">
                 <span className="inline-block h-3 w-3 rounded-full bg-red-600" /> Metered now ({counts.metered})
@@ -166,7 +167,7 @@ export default function Home() {
           )}
           <span
             className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500"
-            title="Each street marker covers a block-face segment (curb between two cross streets), which often includes multiple parking spaces — not a single space. 'Free'/'Metered' reflects the posted legal status, computed live. A crowd report means someone recently saw an opening somewhere on that block, not that the whole block (or any specific space) is open. Garage markers show total licensed capacity, not live availability or rates."
+            title="Each street marker covers a block-face segment (curb between two cross streets), which often includes multiple parking spaces — not a single space. 'No cost'/'Metered' reflects the posted legal status, computed live — 'No cost' means no payment is required right now, not that a space is confirmed empty. A crowd report means someone recently saw an opening somewhere on that block, not that the whole block (or any specific space) is open. Garage markers show total licensed capacity, not live availability or rates."
           >
             i
           </span>

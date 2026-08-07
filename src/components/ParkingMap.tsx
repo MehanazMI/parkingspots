@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
+import { STATUS_LABEL } from "@/lib/statusLabel";
 import type { BoundingBox, ConfidenceLevel, GarageSpot, ParkingSpot, StreetSpot } from "@/lib/types";
 
 // Default Leaflet marker icons reference files that don't survive bundling;
@@ -182,7 +183,7 @@ function StreetPopupContent({ spot, onReport }: { spot: StreetSpot; onReport: (s
           className="inline-block rounded px-1.5 py-0.5 text-xs font-medium text-white"
           style={{ backgroundColor: statusColor(spot.status.value) }}
         >
-          {spot.status.value.toUpperCase()}
+          {STATUS_LABEL[spot.status.value].toUpperCase()}
         </span>
       </p>
       <p className="mt-1 text-gray-600">{spot.status.detail}</p>

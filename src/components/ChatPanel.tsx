@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { useState } from "react";
 import type { ParkingAgentUIMessage } from "@/lib/agents/parking-agent";
+import { STATUS_LABEL } from "@/lib/statusLabel";
 
 type FacilityFilter = "street" | "garage" | "both";
 
@@ -30,7 +31,7 @@ interface StreetToolSpot {
   lat: number;
   lng: number;
   distanceMeters: number;
-  status: string;
+  status: "free" | "metered" | "unknown";
   statusDetail: string;
   limitMinutes: number | null;
   occupancy: { reportCount: number; confidence: "low" | "medium" | "high" } | null;
@@ -91,7 +92,7 @@ function SpotResultCard({ spot, onSelect }: { spot: ToolSpot; onSelect: () => vo
           {spot.onStreet} ({spot.sideOfStreet})
         </span>
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[spot.status]}`}>
-          {spot.status.toUpperCase()}
+          {STATUS_LABEL[spot.status].toUpperCase()}
         </span>
       </div>
       <p className="text-gray-500">

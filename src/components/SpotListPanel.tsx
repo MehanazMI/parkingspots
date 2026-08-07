@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { haversineMeters } from "@/lib/geo";
+import { STATUS_LABEL } from "@/lib/statusLabel";
 import type { ParkingSpot } from "@/lib/types";
 
 type SortBy = "distance" | "cost";
@@ -62,7 +63,7 @@ function SpotRow({ spot, distanceMeters, onSelect }: { spot: ParkingSpot; distan
           {spot.onStreet} ({spot.sideOfStreet})
         </span>
         <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium text-white ${STATUS_COLOR[spot.status.value]}`}>
-          {spot.status.value.toUpperCase()}
+          {STATUS_LABEL[spot.status.value].toUpperCase()}
         </span>
       </div>
       <p className="text-gray-500">
