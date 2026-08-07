@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import { STATUS_LABEL } from "@/lib/statusLabel";
 import type { BoundingBox, ConfidenceLevel, GarageSpot, ParkingSpot, StreetSpot } from "@/lib/types";
@@ -103,8 +103,13 @@ function FlyToController({ target }: { target: FlyToTarget | null }) {
 }
 
 function MoveEndController({ onMoveEnd }: { onMoveEnd: (bbox: BoundingBox) => void }) {
-  const map = useMapEvents({
-    moveend: () => {
+  // useMapEvents re-subscribes (map.off + map.on) whenever this handlers
+  // object's identity changes — a fresh object literal here on every render
+  // meant it was resubscribing on every single re-render of the map (which
+  // happens often, e.g. whenever `spots` updates), not just when `onMoveEnd`
+  // itself actually changes.
+  const handleMoveEnd = useCallback(
+    (map: L.Map) => {
       const b = map.getBounds();
       onMoveEnd({
         north: b.getNorth(),
@@ -113,7 +118,12 @@ function MoveEndController({ onMoveEnd }: { onMoveEnd: (bbox: BoundingBox) => vo
         west: b.getWest(),
       });
     },
-  });
+    [onMoveEnd]
+  );
+
+  const map = useMap();
+  const handlers = useMemo(() => ({ moveend: () => handleMoveEnd(map) }), [handleMoveEnd, map]);
+  useMapEvents(handlers);
   return null;
 }
 

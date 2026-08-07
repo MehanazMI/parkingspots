@@ -117,13 +117,19 @@ export default function ChatPanel({ open, onClose, onSelectSpot, facilityFilter 
   // every render (this component's hooks run even while `open` is false)
   // caused an infinite update loop previously.
   const [transport] = useState(() => new DefaultChatTransport({ api: "/api/chat" }));
-  const { messages, sendMessage, status } = useChat<ParkingAgentUIMessage>({ transport });
+  const { messages, sendMessage, status, error, clearError } = useChat<ParkingAgentUIMessage>({ transport });
 
   if (!open) return null;
+
+  // "error" must stay usable, not stuck disabled forever — a failed request
+  // (rate limit, network blip, etc.) shouldn't brick the panel with no way
+  // to retry.
+  const inputDisabled = status === "submitted" || status === "streaming";
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
+    if (error) clearError();
     // Read facilityFilter fresh here (a plain prop read in an event handler,
     // not during render) so the assistant's default search always matches
     // whatever's currently shown on the map.
@@ -192,19 +198,24 @@ export default function ChatPanel({ open, onClose, onSelectSpot, facilityFilter 
           </div>
         ))}
         {status === "submitted" && <p className="text-xs text-gray-400">Thinking…</p>}
+        {error && (
+          <p className="text-xs text-red-600">
+            Something went wrong ({error.message || "request failed"}) — try sending your message again.
+          </p>
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="flex gap-2 border-t border-gray-200 p-2.5">
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={status !== "ready"}
+          disabled={inputDisabled}
           placeholder="Ask about parking…"
           className="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none disabled:bg-gray-50"
         />
         <button
           type="submit"
-          disabled={status !== "ready"}
+          disabled={inputDisabled}
           className="rounded bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           Send
