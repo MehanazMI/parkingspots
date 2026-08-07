@@ -68,9 +68,11 @@ function SpotResultCard({ spot, onSelect }: { spot: ToolSpot; onSelect: () => vo
 
 export default function ChatPanel({ open, onClose, onSelectSpot }: ChatPanelProps) {
   const [input, setInput] = useState("");
-  const { messages, sendMessage, status } = useChat<ParkingAgentUIMessage>({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
-  });
+  // Must stay referentially stable across renders — a fresh transport object
+  // every render (this component's hooks run even while `open` is false)
+  // caused an infinite update loop.
+  const [transport] = useState(() => new DefaultChatTransport({ api: "/api/chat" }));
+  const { messages, sendMessage, status } = useChat<ParkingAgentUIMessage>({ transport });
 
   if (!open) return null;
 
