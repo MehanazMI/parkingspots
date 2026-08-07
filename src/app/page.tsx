@@ -83,6 +83,10 @@ export default function Home() {
 
   const handleSelectSpotFromChat = useCallback((spot: { id: string; lat: number; lng: number }) => {
     setHighlightedSpotId(spot.id);
+    // A chat result may be a type the current filter is hiding (e.g. a garage
+    // while "Street" is selected) — switch to "Both" so it's guaranteed to
+    // actually load and be highlightable, rather than silently doing nothing.
+    setFacilityFilter("both");
     setFlyTo({ lat: spot.lat, lng: spot.lng, zoom: 18, spotId: spot.id });
   }, []);
 
@@ -191,7 +195,12 @@ export default function Home() {
           </button>
         )}
 
-        <ChatPanel open={chatOpen} onClose={() => setChatOpen(false)} onSelectSpot={handleSelectSpotFromChat} />
+        <ChatPanel
+          open={chatOpen}
+          onClose={() => setChatOpen(false)}
+          onSelectSpot={handleSelectSpotFromChat}
+          facilityFilter={facilityFilter}
+        />
       </div>
     </div>
   );

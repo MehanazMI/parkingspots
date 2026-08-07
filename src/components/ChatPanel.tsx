@@ -5,10 +5,13 @@ import { DefaultChatTransport } from "ai";
 import { useState } from "react";
 import type { ParkingAgentUIMessage } from "@/lib/agents/parking-agent";
 
+type FacilityFilter = "street" | "garage" | "both";
+
 interface ChatPanelProps {
   open: boolean;
   onClose: () => void;
   onSelectSpot: (spot: { id: string; lat: number; lng: number }) => void;
+  facilityFilter: FacilityFilter;
 }
 
 const STATUS_COLOR: Record<string, string> = {
@@ -102,11 +105,11 @@ function SpotResultCard({ spot, onSelect }: { spot: ToolSpot; onSelect: () => vo
   );
 }
 
-export default function ChatPanel({ open, onClose, onSelectSpot }: ChatPanelProps) {
+export default function ChatPanel({ open, onClose, onSelectSpot, facilityFilter }: ChatPanelProps) {
   const [input, setInput] = useState("");
   // Must stay referentially stable across renders — a fresh transport object
   // every render (this component's hooks run even while `open` is false)
-  // caused an infinite update loop.
+  // caused an infinite update loop previously.
   const [transport] = useState(() => new DefaultChatTransport({ api: "/api/chat" }));
   const { messages, sendMessage, status } = useChat<ParkingAgentUIMessage>({ transport });
 
@@ -115,7 +118,10 @@ export default function ChatPanel({ open, onClose, onSelectSpot }: ChatPanelProp
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!input.trim()) return;
-    sendMessage({ text: input });
+    // Read facilityFilter fresh here (a plain prop read in an event handler,
+    // not during render) so the assistant's default search always matches
+    // whatever's currently shown on the map.
+    sendMessage({ text: input }, { body: { facilityFilter } });
     setInput("");
   }
 

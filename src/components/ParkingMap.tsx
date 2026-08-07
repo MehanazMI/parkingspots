@@ -215,7 +215,7 @@ function GaragePopupContent({ spot }: { spot: GarageSpot }) {
         <p className="text-gray-600">{spot.bicycleCapacity} bicycle capacity</p>
       )}
       <p className="mt-1 text-xs text-gray-400">
-        Rate not available in NYC's open data — check with the garage directly.
+        Rate not available in NYC&apos;s open data — check with the garage directly.
       </p>
     </>
   );

@@ -1,13 +1,17 @@
 import { createAgentUIStreamResponse } from "ai";
-import { parkingAgent } from "@/lib/agents/parking-agent";
+import { buildParkingAgent } from "@/lib/agents/parking-agent";
 
 export const maxDuration = 30;
 
+function parseFacilityFilter(value: unknown): "street" | "garage" | "both" {
+  return value === "street" || value === "garage" ? value : "both";
+}
+
 export async function POST(request: Request) {
-  const { messages } = await request.json();
+  const { messages, facilityFilter } = await request.json();
 
   return createAgentUIStreamResponse({
-    agent: parkingAgent,
+    agent: buildParkingAgent(parseFacilityFilter(facilityFilter)),
     uiMessages: messages,
   });
 }
