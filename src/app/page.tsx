@@ -8,9 +8,8 @@ import SpotListPanel from "@/components/SpotListPanel";
 import { STATUS_LABEL } from "@/lib/statusLabel";
 import type { BoundingBox, ParkingSpot } from "@/lib/types";
 
-type FacilityFilter = "street" | "garage" | "both";
 type SortBy = "distance" | "cost";
-type StreetStatusFilter = { free: boolean; metered: boolean };
+type Visibility = { street: boolean; garages: boolean; free: boolean; metered: boolean };
 
 const ParkingMap = dynamic(() => import("@/components/ParkingMap"), {
   ssr: false,
@@ -18,6 +17,16 @@ const ParkingMap = dynamic(() => import("@/components/ParkingMap"), {
 });
 
 const UNION_SQUARE: [number, number] = [40.7359, -73.9911];
+const ALL_VISIBLE: Visibility = { street: true, garages: true, free: true, metered: true };
+
+function toggleButtonClass(active: boolean, activeClasses: string): string {
+  // Deliberately solid/plain states, not a subtle tint or glow — "on" is a
+  // filled, colored pill; "off" is a plain outlined button. No ambiguity
+  // about which state a button is in at a glance.
+  return active
+    ? `flex items-center gap-1.5 rounded px-2.5 py-1 font-medium text-white ${activeClasses}`
+    : "flex items-center gap-1.5 rounded border border-gray-300 bg-white px-2.5 py-1 font-medium text-gray-500 hover:bg-gray-50";
+}
 
 export default function Home() {
   const [spots, setSpots] = useState<ParkingSpot[]>([]);
@@ -27,60 +36,51 @@ export default function Home() {
   const [lastBbox, setLastBbox] = useState<BoundingBox | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
   const [highlightedSpotId, setHighlightedSpotId] = useState<string | null>(null);
-  const [facilityFilter, setFacilityFilter] = useState<FacilityFilter>("both");
-  const [statusFilter, setStatusFilter] = useState<StreetStatusFilter>({ free: true, metered: true });
+  const [visibility, setVisibility] = useState<Visibility>(ALL_VISIBLE);
   const [listOpen, setListOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("distance");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const loadSpots = useCallback(
-    async (bbox: BoundingBox, filter: FacilityFilter) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const params = new URLSearchParams({
-          north: String(bbox.north),
-          south: String(bbox.south),
-          east: String(bbox.east),
-          west: String(bbox.west),
-          type: filter,
-        });
-        const res = await fetch(`/api/parking?${params.toString()}`);
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error ?? "Failed to load parking data");
-        setSpots(data.spots ?? []);
-      } catch {
-        setError("Couldn't load parking data for this area. Try panning or searching again.");
-      } finally {
-        setLoading(false);
-      }
-    },
-    []
-  );
+  // Always fetches both facility types — the four toggles below are pure
+  // client-side filters over whatever's loaded, so switching any of them is
+  // instant with no network round-trip.
+  const loadSpots = useCallback(async (bbox: BoundingBox) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        north: String(bbox.north),
+        south: String(bbox.south),
+        east: String(bbox.east),
+        west: String(bbox.west),
+        type: "both",
+      });
+      const res = await fetch(`/api/parking?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to load parking data");
+      setSpots(data.spots ?? []);
+    } catch {
+      setError("Couldn't load parking data for this area. Try panning or searching again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   const handleReady = useCallback(
     (bbox: BoundingBox) => {
       setLastBbox(bbox);
-      loadSpots(bbox, facilityFilter);
+      loadSpots(bbox);
     },
-    [loadSpots, facilityFilter]
+    [loadSpots]
   );
 
   const handleMoveEnd = useCallback(
     (bbox: BoundingBox) => {
       setLastBbox(bbox);
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => loadSpots(bbox, facilityFilter), 500);
+      debounceRef.current = setTimeout(() => loadSpots(bbox), 500);
     },
-    [loadSpots, facilityFilter]
-  );
-
-  const handleFilterChange = useCallback(
-    (filter: FacilityFilter) => {
-      setFacilityFilter(filter);
-      if (lastBbox) loadSpots(lastBbox, filter);
-    },
-    [lastBbox, loadSpots]
+    [loadSpots]
   );
 
   const handleSelect = useCallback((result: { lat: number; lng: number; label: string }) => {
@@ -90,17 +90,15 @@ export default function Home() {
 
   const handleSelectSpot = useCallback((spot: { id: string; lat: number; lng: number }) => {
     setHighlightedSpotId(spot.id);
-    // A chat or list-panel result may be a type/status the current filters are
-    // hiding (e.g. a metered spot while "No cost" only is toggled on) — reset
-    // both so it's guaranteed to actually load and be highlightable, not
-    // silently do nothing.
-    setFacilityFilter("both");
-    setStatusFilter({ free: true, metered: true });
+    // A chat or list-panel result may be a type/status a toggle is currently
+    // hiding — turn everything back on so it's guaranteed to actually be
+    // visible and highlightable, not silently do nothing.
+    setVisibility(ALL_VISIBLE);
     setFlyTo({ lat: spot.lat, lng: spot.lng, zoom: 18, spotId: spot.id });
   }, []);
 
-  const toggleStatusFilter = useCallback((key: keyof StreetStatusFilter) => {
-    setStatusFilter((prev) => ({ ...prev, [key]: !prev[key] }));
+  const toggleVisibility = useCallback((key: keyof Visibility) => {
+    setVisibility((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
   const handleReport = useCallback(async (spotId: string) => {
@@ -121,17 +119,19 @@ export default function Home() {
     return { lat: (lastBbox.north + lastBbox.south) / 2, lng: (lastBbox.east + lastBbox.west) / 2 };
   }, [lastBbox]);
 
-  // Street spots with an unrecognized status always show — the toggles only
-  // hide/show the two statuses the app actually understands.
+  // A street spot with an unrecognized status always shows when Street is
+  // on — the No cost/Metered toggles only hide/show the two statuses the
+  // app actually understands.
   const visibleSpots = useMemo(
     () =>
       spots.filter((s) => {
-        if (s.facilityType === "garage") return true;
-        if (s.status.value === "free") return statusFilter.free;
-        if (s.status.value === "metered") return statusFilter.metered;
+        if (s.facilityType === "garage") return visibility.garages;
+        if (!visibility.street) return false;
+        if (s.status.value === "free") return visibility.free;
+        if (s.status.value === "metered") return visibility.metered;
         return true;
       }),
-    [spots, statusFilter]
+    [spots, visibility]
   );
 
   const counts = useMemo(() => {
@@ -139,8 +139,18 @@ export default function Home() {
     const free = streetSpots.filter((s) => s.status.value === "free").length;
     const metered = streetSpots.filter((s) => s.status.value === "metered").length;
     const garages = spots.filter((s) => s.facilityType === "garage").length;
-    return { free, metered, garages, total: spots.length };
+    return { street: streetSpots.length, free, metered, garages };
   }, [spots]);
+
+  // What the AI assistant should default to searching, derived from the
+  // same toggles driving the map — if the user's only looking at garages,
+  // the assistant should default there too. Falls back to "both" if
+  // somehow nothing is toggled on, so the assistant stays useful.
+  const agentFacilityFilter = useMemo(() => {
+    if (visibility.street && !visibility.garages) return "street";
+    if (visibility.garages && !visibility.street) return "garage";
+    return "both";
+  }, [visibility.street, visibility.garages]);
 
   return (
     <div className="flex h-dvh w-full flex-col">
@@ -152,53 +162,46 @@ export default function Home() {
         <SearchBar onSelect={handleSelect} />
       </header>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm text-gray-700">
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex items-center gap-1 rounded-md border border-gray-300 bg-white p-0.5">
-            {(["both", "street", "garage"] as const).map((f) => (
-              <button
-                key={f}
-                type="button"
-                onClick={() => handleFilterChange(f)}
-                className={`rounded px-2.5 py-1 text-xs font-medium ${
-                  facilityFilter === f ? "bg-blue-600 text-white" : "text-gray-600 hover:bg-gray-100"
-                }`}
-              >
-                {f === "both" ? "Both" : f === "street" ? "Street" : "Garages"}
-              </button>
-            ))}
-          </div>
-          {facilityFilter !== "garage" && (
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-4 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => toggleVisibility("street")}
+            aria-pressed={visibility.street}
+            className={toggleButtonClass(visibility.street, "bg-gray-700")}
+          >
+            Street ({counts.street})
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleVisibility("garages")}
+            aria-pressed={visibility.garages}
+            className={toggleButtonClass(visibility.garages, "bg-indigo-600")}
+          >
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-white" /> Garages ({counts.garages})
+          </button>
+          {visibility.street && (
             <>
               <button
                 type="button"
-                onClick={() => toggleStatusFilter("free")}
-                aria-pressed={statusFilter.free}
-                className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 ${
-                  statusFilter.free ? "bg-green-50 text-gray-700" : "text-gray-400 opacity-60 hover:opacity-100"
-                }`}
+                onClick={() => toggleVisibility("free")}
+                aria-pressed={visibility.free}
+                className={toggleButtonClass(visibility.free, "bg-green-600")}
               >
-                <span className="inline-block h-3 w-3 rounded-full bg-green-600" /> {STATUS_LABEL.free} now ({counts.free})
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-white" /> {STATUS_LABEL.free} ({counts.free})
               </button>
               <button
                 type="button"
-                onClick={() => toggleStatusFilter("metered")}
-                aria-pressed={statusFilter.metered}
-                className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 ${
-                  statusFilter.metered ? "bg-red-50 text-gray-700" : "text-gray-400 opacity-60 hover:opacity-100"
-                }`}
+                onClick={() => toggleVisibility("metered")}
+                aria-pressed={visibility.metered}
+                className={toggleButtonClass(visibility.metered, "bg-red-600")}
               >
-                <span className="inline-block h-3 w-3 rounded-full bg-red-600" /> Metered now ({counts.metered})
+                <span className="inline-block h-2.5 w-2.5 rounded-full bg-white" /> Metered ({counts.metered})
               </button>
               <span className="flex items-center gap-1.5 text-gray-500">
                 <span className="inline-block h-3 w-3 rounded-full border-2 border-blue-600" /> Crowd-reported opening
               </span>
             </>
-          )}
-          {facilityFilter !== "street" && (
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-3 w-3 rounded-sm bg-indigo-600" /> Garages ({counts.garages})
-            </span>
           )}
           <span
             className="flex h-4 w-4 cursor-help items-center justify-center rounded-full border border-gray-300 text-[10px] font-semibold text-gray-500"
@@ -211,7 +214,7 @@ export default function Home() {
         </div>
         <button
           type="button"
-          onClick={() => lastBbox && loadSpots(lastBbox, facilityFilter)}
+          onClick={() => lastBbox && loadSpots(lastBbox)}
           className="rounded border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
         >
           Refresh
@@ -264,7 +267,7 @@ export default function Home() {
           open={chatOpen}
           onClose={() => setChatOpen(false)}
           onSelectSpot={handleSelectSpot}
-          facilityFilter={facilityFilter}
+          facilityFilter={agentFacilityFilter}
         />
       </div>
     </div>

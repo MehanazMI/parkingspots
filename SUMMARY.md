@@ -278,6 +278,45 @@ exists anywhere that was found.
 - Extracted `haversineMeters` into `src/lib/geo.ts` (previously duplicated
   inline in `find-parking-tool.ts`) since the list panel needed it too.
 
+## Unified toggle filters (replacing the Street/Garages/Both selector)
+
+User feedback: the toolbar had two different filter UI patterns doing
+similar jobs — an exclusive 3-way "Both/Street/Garages" segmented control,
+and two independent "No cost"/"Metered" toggle buttons. Asked to make it
+one consistent pattern (four independent toggles) with an explicit styling
+requirement: "clearly visible, no highlighting" — solid filled color for
+on, plain outlined for off, no subtle background tinting or glow.
+
+- `page.tsx`: replaced `facilityFilter: "street" | "garage" | "both"` with
+  a single `visibility: { street, garages, free, metered }` boolean object,
+  all four defaulting to `true` (first load looks identical to before).
+- Architecture simplification alongside the UI change: `/api/parking` is
+  now always called with `type=both` — all four toggles are pure
+  client-side filters over `visibleSpots` (a `useMemo` over already-loaded
+  `spots`), so toggling anything is instant with no network round-trip.
+  Previously Street/Garages triggered a refetch while No cost/Metered were
+  client-side only; now all four behave identically, which is what made
+  "everything as toggle buttons" actually consistent rather than two
+  patterns that happen to look similar.
+- `toggleButtonClass()` helper: active = solid `bg-{color}-600 text-white`
+  pill; inactive = plain `bg-white border-gray-300 text-gray-500` — same
+  treatment for all four buttons (Street=slate, Garages=indigo,
+  No cost=green, Metered=red), so on/off state reads unambiguously at a
+  glance rather than via a tint difference.
+- The AI assistant's default search still needs one of
+  `street`/`garage`/`both` for its context — `agentFacilityFilter` derives
+  that from `{street, garages}` (falls back to `"both"` if both are
+  somehow off, so the assistant stays useful even then).
+- `handleSelectSpot` now resets all four toggles to `true` (previously
+  reset the old two-part filter state) — same guarantee as before: a
+  chat/list result is never hidden by a stale toggle.
+
+Verified via Playwright: toggled through all combinations (491 → 400 with
+Garages off → 0 with Street also off → 400 → 491 restoring Garages),
+confirmed No cost/Metered hide when Street is off, confirmed instant
+client-side response (no loading spinner) on every toggle, zero console
+errors.
+
 ## Architecture
 
 ```

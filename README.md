@@ -38,8 +38,9 @@ Each shows a name, address, and **total vehicle capacity** (a static
 license figure, not a live count). There's no rate/price data for garages
 in NYC's free open data (see
 [GARAGE_DATA_RESEARCH.md](GARAGE_DATA_RESEARCH.md) for what was checked and
-ruled out). Use the **Street / Garages / Both** toggle in the toolbar to
-filter which type shows on the map (and in the AI assistant's results).
+ruled out). Toggle the **Street** / **Garages** buttons in the toolbar to
+show or hide each type independently — both are on by default. The AI
+assistant's default search follows the same toggles.
 
 ### Cost — street rates and sorting
 
