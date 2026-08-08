@@ -90,7 +90,11 @@ vehicle capacity. Built on that:
   filter (`lic_expir_dd > today`), parses `"Vehicle Capacity: N; Bicycle
   Capacity: N"` out of the free-text `detail` field.
 - `/api/parking` gained a `type=street|garage|both` param; the map toolbar
-  got a **Street / Garages / Both** segmented filter driving it.
+  got a **Street / Garages / Both** segmented filter driving it. (This was
+  later replaced by four independent toggle buttons — Street, Garages,
+  No cost, Metered — see SUMMARY.md's "Unified toggle filters" section;
+  `/api/parking` now always fetches `both` and filtering happens
+  client-side.)
 - Garages render as square indigo markers (vs. street's colored circles) —
   the "differentiate street vs. garage" requirement — with popups showing
   name, address, and capacity, explicitly labeled "total, not live

@@ -115,7 +115,7 @@ NYC_OPEN_DATA_APP_TOKEN=your_token_here
 
 ### Optional: crowdsourced occupancy reports (Upstash Redis)
 
-To enable the "It's open" / "It's taken" reporting feature:
+To enable the "I saw an opening here" crowd-reporting feature:
 
 1. Sign up at https://console.upstash.com (free tier, no card required) and
    create a Redis database.
