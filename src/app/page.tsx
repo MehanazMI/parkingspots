@@ -40,6 +40,10 @@ export default function Home() {
   const [listOpen, setListOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortBy>("distance");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Live viewport bounds, tracked in a ref so a burst of Leaflet `moveend`
+  // events (e.g. during a fly-to animation) never thrashes React state — the
+  // state below is only reflected once movement settles, in the debounce.
+  const lastBboxRef = useRef<BoundingBox | null>(null);
 
   // Always fetches both facility types — the four toggles below are pure
   // client-side filters over whatever's loaded, so switching any of them is
@@ -68,6 +72,7 @@ export default function Home() {
 
   const handleReady = useCallback(
     (bbox: BoundingBox) => {
+      lastBboxRef.current = bbox;
       setLastBbox(bbox);
       loadSpots(bbox);
     },
@@ -76,9 +81,17 @@ export default function Home() {
 
   const handleMoveEnd = useCallback(
     (bbox: BoundingBox) => {
-      setLastBbox(bbox);
+      // Record the bounds synchronously (ref, no re-render); only reflect them
+      // into React state once the map has been still for 500ms, alongside the
+      // fetch. Calling setState on every `moveend` let a fly-to animation's
+      // rapid moveend burst schedule an unbounded update cascade ("Maximum
+      // update depth exceeded").
+      lastBboxRef.current = bbox;
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => loadSpots(bbox), 500);
+      debounceRef.current = setTimeout(() => {
+        setLastBbox(bbox);
+        loadSpots(bbox);
+      }, 500);
     },
     [loadSpots]
   );
@@ -214,7 +227,7 @@ export default function Home() {
         </div>
         <button
           type="button"
-          onClick={() => lastBbox && loadSpots(lastBbox)}
+          onClick={() => lastBboxRef.current && loadSpots(lastBboxRef.current)}
           className="rounded border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
         >
           Refresh
