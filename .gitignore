@@ -42,3 +42,9 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# Claude Code build-check stamp (generated)
+.claude/.last-build-sig
+
+# Claude Code personal settings (permissions/hooks allowlist, machine-specific)
+.claude/settings.local.json
